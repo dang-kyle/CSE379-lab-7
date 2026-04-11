@@ -1,6 +1,10 @@
 # ignore everything except: lab 7 files and startup code
-/lab7/*
-!lab7/lab_7.s
-!lab7/lab_7_library.s
-!lab7/lab_7_wrapper.c
-!lab7/tm4c123gh6pm_startup_ccs.c
+.jxbrowser.userdata
+.metadata
+dvt
+RemoteSystemsTempFiles
+SourceCode/*
+!SourceCode/lab_7.s
+!SourceCode/lab_7_library.s
+!SourceCode/lab_7_wrapper.c
+!SourceCode/tm4c123gh6pm_startup_ccs.c

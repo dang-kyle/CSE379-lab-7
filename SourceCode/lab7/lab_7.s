@@ -1,31 +1,24 @@
 ; ============
 ; GLOBAL STUFF
 ; ============
-
 	.data
 
 	.global prompt
-	.global mydata
-	.global datahalf
-	.global dataword
 	.global lookup_color
 	.global lookup_char
-	.global row1
-	.global row2
-	.global row3
-	.global row4
-	.global row5
-	.global row6
-	.global row7
-	.global row8
-	.global row9
-	.global row10
 	.global board
+	.global lives
+	.global pm_x
+	.global pm_y
+	.global score
+	.global dir
+	.global pause
+	.global state
+
 
 ; ============
 ; ANSI STRINGS
 ; ============
-
 ansi_black:		.string 27, "[37;40m", 0		; foreground white, background black
 ansi_blue:		.string 27, "[37;44m", 0		; foreground white, background blue
 ansi_pacman:	.string 27, "[33;44m", 0		; foreground yellow, background blue
@@ -35,10 +28,10 @@ ansi_inky:		.string 27, "[36m", 0			; foreground cyan
 ansi_clyde:		.string 27, "[38;5;208m", 0		; foreground orange
 ansi_door:		.string 27, "[106m",0			; background bright cyan
 
+
 ; =============
 ; LOOKUP TABLES
 ; =============
-
 lookup_color:	.word ansi_black		; 0x00 - wall
 				.word ansi_blue			; 0x01 - pellet
 				.word ansi_blue			; 0x02 - power pellet
@@ -60,6 +53,7 @@ lookup_char:	.byte 0x20	; 0x00 - wall = ' '
 				.byte 0x41	; 0x07 - ghost = 'A'
 				.byte 0x41	; 0x08 - ghost = 'A'
 				.byte 0x20	; 0x09 - door = ' '
+
 
 ; ===================
 ; STARTING GAME BOARD
@@ -100,9 +94,20 @@ board:
 		.byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 prompt:			.string "placeholder", 0
-databyte:		.byte 0x00
-datahalf:		.half 0x0000
-dataword:		.word 0x00000000
+lives:			.byte 0x04
+pm_x:			.byte 15
+pm_y:			.byte 26
+score:			.byte 0x00
+dir:			.byte 0x00	; 0 = up, 1 = left, 2 = down, 3 = right
+pause:			.byte 0x00	; 1 = pause, 0 = not pause
+state:			.byte 0x00	; state of game, initialized to 0, game starts paused
+
+; game states:
+;	0 = paused
+; 	1 = normal
+;	2 = powerup
+; 	3 = end round
+; 	4 = game over
 
 	.text
 
@@ -124,17 +129,21 @@ dataword:		.word 0x00000000
 	.global lab7
 
 ptr_prompt:			.word prompt
-ptr_databyte:		.word databyte
-ptr_datahalf:		.word datahalf
-ptr_dataword:		.word dataword
 ptr_lookup_color:	.word lookup_color
 ptr_lookup_char:	.word lookup_char
 ptr_board:			.word board
+ptr_lives:			.word lives
+ptr_pm_x:			.word pm_x
+ptr_pm_y:			.word pm_y
+ptr_score:			.word score
+ptr_dir:			.word dir
+ptr_pause:			.word pause
+ptr_state			.word state
+
 
 ; ==========
 ; LAB 7 MAIN
 ; ==========
-
 lab7:								; This is your main routine which is called from your C wrapper.
 	PUSH {r4-r12,lr}   		; Preserve registers to adhere to the AAPCS
 
@@ -152,10 +161,10 @@ MAIN_END:
 	POP {r4-r12,lr}		; Restore registers to adhere to the AAPCS
 	MOV pc, lr
 
+
 ; ==================
 ; PRINT ENTIRE BOARD
 ; ==================
-
 print_board:
 	PUSH {r4-r7,lr}   		; Preserve registers to adhere to the AAPCS
 
@@ -180,10 +189,10 @@ row_loop:
 	POP {r4-r7,lr}		; Restore registers to adhere to the AAPCS
 	MOV pc, lr
 
+
 ; =====================
 ; PRINT INDIVIDUAL ROWS
 ; =====================
-
 print_row:
 	PUSH {r4-r6,lr}   		; Preserve registers to adhere to the AAPCS
 
@@ -213,10 +222,10 @@ print_row_loop:
 	POP {r4-r6,lr}		; Restore registers to adhere to the AAPCS
 	MOV pc, lr
 
+
 ; ======================
 ; UART INTERRUPT HANDLER
 ; ======================
-
 UART0_Handler:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your UART handler goes here.
@@ -225,7 +234,49 @@ UART0_Handler:
 
 	BL read_character
 
+	; if game paused, do nothing
+	LDR r4, ptr_pause
+	LDRB r5, [r4]
+	CMP r5, #0
+	BEQ UART_EXIT
 
+	; get direction variable
+	LDR r4, ptr_dir
+	LDRB r5, [r4]
+
+	CMP r0, #119		; ascii 'w'
+	BEQ SET_UP
+
+	CMP r0, #97			; ascii 'a'
+	BEQ SET_LEFT
+
+	CMP r0, #115		; ascii 's'
+	BEQ SET_DOWN
+
+	CMP r0, #100		; ascii 'd'
+	BEQ SET_RIGHT
+
+	B UART_HANDLER_END
+
+SET_UP:
+	MOV r6, #0
+	STRB r6, [r4]
+	B UART_HANDLER_END
+
+SET_LEFT:
+	MOV r6, #1
+	STRB r6, [r4]
+	B UART_HANDLER_END
+
+SET_DOWN:
+	MOV r6, #2
+	STRB r6, [r4]
+	B UART_HANDLER_END
+
+SET_RIGHT:
+	MOV r6, #3
+	STRB r6, [r4]
+	B UART_HANDLER_END
 
 UART_HANDLER_END:
 	; clear UART interrupt
@@ -237,17 +288,49 @@ UART_HANDLER_END:
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
 
+
 ; ========================
 ; SWITCH INTERRUPT HANDLER
 ; ========================
-
 Switch_Handler:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your UART handler goes here.
 	; Remember to preserver registers r4-r12 by pushing then popping
 	; them to & from the stack at the beginning & end of the handler
 
+	LDR r4, ptr_pause
+	LDRB r5, [r4]
+	EOR r5, r5, #1		; flip pause flag
+	STRB r5, [r4]
 
+	MOV r4, #0x0000
+	MOVT r4, #0x4003
+
+	LDR r6, ptr_state
+
+	CMP r5, #1
+	BEQ DISABLE_TIMER
+
+	B ENABLE_TIMER
+
+DISABLE_TIMER:
+	MOV r7, #0	; set state to paused
+	STRB r7, [r6]
+
+	LDR r5, [r4, #0x00C]	; GPTMCTL Offset
+	BIC r5, r5, #0x1
+	STR r5, [r4, #0x00C]
+	B SWITCH_HANDLER_END
+
+ENABLE_TIMER:
+	MOV r7, #1	; set state to normal
+				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+				; needs to be changed to remember state before the game was paused
+				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	STRB r, [r6
+
+	MOV r5, #0x1
+	STR r5, [r4, #0x018]	; GPTMIMR
 
 SWITCH_HANDLER_END:
     ; clear interrupt
@@ -259,10 +342,10 @@ SWITCH_HANDLER_END:
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
 
+
 ; =======================
 ; TIMER INTERRUPT HANDLER
 ; =======================
-
 Timer_Handler:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your Timer handler goes here.  It is not needed for

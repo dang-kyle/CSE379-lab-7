@@ -14,6 +14,16 @@
 	.global dir
 	.global pause
 	.global state
+	.global cursor_row
+	.global cursor_col
+	.global redraw_flag
+	.global old_x
+	.global old_y
+	.global new_x
+	.global new_y
+	.global remove_cursor
+	.global ansi_home
+	.global ansi_clear
 
 
 ; ============
@@ -97,9 +107,9 @@ prompt:			.string "placeholder", 0
 lives:			.byte 0x04
 pm_x:			.byte 15
 pm_y:			.byte 26
-score:			.byte 0x00
+score:			.word 0x00000000
 dir:			.byte 0x00	; 0 = up, 1 = left, 2 = down, 3 = right
-pause:			.byte 0x00	; 1 = pause, 0 = not pause
+pause:			.byte 0x01	; 1 = pause, 0 = not pause, starts paused
 state:			.byte 0x00	; state of game, initialized to 0, game starts paused
 
 ; game states:
@@ -109,12 +119,23 @@ state:			.byte 0x00	; state of game, initialized to 0, game starts paused
 ; 	3 = end round
 ; 	4 = game over
 
+cursor_row:		.string "placeholder string", 0
+cursor_col:		.string "placeholder string", 0
+redraw_flag:	.byte 0x00
+old_x:			.byte 0
+old_y:			.byte 0
+new_x:			.byte 0
+new_y:			.byte 0
+remove_cursor:	.string 27, "[?25l", 0
+ansi_home:		.string 27, "[H", 0			; moves cursor to top left
+ansi_clear:		.string 27, "[2J", 0		; clears the screen
+
 	.text
 
 	.global UART0_Handler			; updated for lab 7
 	.global Switch_Handler			; updated for lab 7
 	.global Timer_Handler			; updated for lab 7
-;	.global simple_read_character	; read_character modified for interrupts
+	.global simple_read_character	; read_character modified for interrupts
 	.global output_character		; This is from your Lab #4 Library
 	.global read_string				; This is from your Lab #4 Library
 	.global output_string			; This is from your Lab #4 Library
@@ -138,8 +159,32 @@ ptr_pm_y:			.word pm_y
 ptr_score:			.word score
 ptr_dir:			.word dir
 ptr_pause:			.word pause
-ptr_state			.word state
+ptr_state:			.word state
+ptr_cursor_row:		.word cursor_row
+ptr_cursor_col:		.word cursor_col
+ptr_redraw_flag:	.word redraw_flag
+ptr_old_x:			.word old_x
+ptr_old_y:			.word old_y
+ptr_new_x:			.word new_x
+ptr_new_y:			.word new_y
+ptr_remove_cursor:	.word remove_cursor
+ptr_ansi_home:		.word ansi_home
+ptr_ansi_clear:		.word ansi_clear
 
+;
+; -=-=-=-=-=-=- notes -=-=-=-=-=-=-
+; (kyle notes)
+; bugs/issues:
+; 	- pacman moves now, but movement is off.
+;	- it thinks pacman is in a different location (slightly off) ?
+;	- at the first movement (to the right), pacman is printed to the right one and down one from the starting position
+;	- so that means the first reprint of pacman is 1 tile below where it should be
+;
+; next to do:
+; 	- fix pacman movement
+; 	- add normal pellet eating logic
+;	- increment score for every pellet eaten
+;
 
 ; ==========
 ; LAB 7 MAIN
@@ -151,14 +196,68 @@ lab7:								; This is your main routine which is called from your C wrapper.
  	bl gpio_btn_and_LED_init
 	bl uart_interrupt_init
 	bl gpio_interrupt_init
+	bl timer_interrupt_init
 
-	; game code start below here
+; 	game code start below here
+
+	; clear the screen
+	LDR r0, ptr_ansi_clear
+	BL output_string
+
+	; move cursor to top left
+	LDR r0, ptr_ansi_home
+	BL output_string
+
+	; make the cursor invisible
+	LDR r0, ptr_remove_cursor
+	BL output_string
 
 	BL print_board
 
-MAIN_END:
+MAIN_LOOP:
+
+	LDR r0, ptr_redraw_flag
+	LDRB r1, [r0]
+	CMP r1, #1
+	BNE MAIN_LOOP
+
+	; clear the redraw flag
+	MOV r1, #0
+	STRB r1, [r0]
+
+	BL update_tiles
+
+	B MAIN_LOOP
 
 	POP {r4-r12,lr}		; Restore registers to adhere to the AAPCS
+	MOV pc, lr
+
+
+; ==============
+;  UPDATE_TILES
+; ==============
+update_tiles:
+	PUSH {r4-r5,lr}
+
+	; draw old tile
+	LDR r0, ptr_old_x
+	LDRB r4, [r0]
+	LDR r0, ptr_old_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile
+
+	; draw new tile
+	LDR r0, ptr_new_x
+	LDRB r4, [r0]
+	LDR r0, ptr_new_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile
+
+	POP {r4-r5,lr}
 	MOV pc, lr
 
 
@@ -169,7 +268,7 @@ print_board:
 	PUSH {r4-r7,lr}   		; Preserve registers to adhere to the AAPCS
 
 	LDR r4, ptr_board	; board base address
-	MOV r5, #33		; 10 rows
+	MOV r5, #33		; 33 rows
 
 row_loop:
 	MOV r7, r4		; row pointer
@@ -232,13 +331,17 @@ UART0_Handler:
 	; Remember to preserver registers r4-r12 by pushing then popping
 	; them to & from the stack at the beginning & end of the handler
 
-	BL read_character
+;	BL simple_read_character
+
+	MOV r4, #0xC000
+	MOVT r4, #0x4000
+	LDRB r0, [r4]
 
 	; if game paused, do nothing
 	LDR r4, ptr_pause
 	LDRB r5, [r4]
-	CMP r5, #0
-	BEQ UART_EXIT
+	CMP r5, #1
+	BEQ UART_HANDLER_END
 
 	; get direction variable
 	LDR r4, ptr_dir
@@ -327,10 +430,11 @@ ENABLE_TIMER:
 				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
 				; needs to be changed to remember state before the game was paused
 				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	STRB r, [r6
+	STRB r7, [r6]
 
-	MOV r5, #0x1
-	STR r5, [r4, #0x018]	; GPTMIMR
+	LDR r5, [r4, #0x00C]
+	ORR r5, r5, #1
+	STR r5, [r4, #0x00C]
 
 SWITCH_HANDLER_END:
     ; clear interrupt
@@ -343,9 +447,9 @@ SWITCH_HANDLER_END:
 	BX lr       	; Return
 
 
-; =======================
-; TIMER INTERRUPT HANDLER
-; =======================
+; =========================
+;  TIMER INTERRUPT HANDLER
+; =========================
 Timer_Handler:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your Timer handler goes here.  It is not needed for
@@ -359,13 +463,227 @@ Timer_Handler:
 	; clear timer interrupt
 	MOV r4, #0x0000
 	MOVT r4, #0x4003
-	LDR r5, [r4, #0x024]
-	ORR r5, r5, #1
+	MOV r5, #1
 	STR r5, [r4, #0x024]
 
+	; pause check
+	LDR r0, ptr_pause
+	LDRB r1, [r0]
+	CMP r1, #1
+	BEQ MOVE_DONE
 
+	; load current position and direction
+	LDR r0, ptr_pm_x
+	LDRB r1, [r0]		; r1 = x
+	LDR r0, ptr_pm_y
+	LDRB r2, [r0]		; r2 = y
+	LDR r0, ptr_dir
+	LDRB r3, [r0]		; r3 = dir
 
-TIMER_HANDLER_END:
+	; new position
+	MOV r4, r1	; new_x
+	MOV r5, r2	; new_y
+
+	; check movement
+	CMP r3, #0		; up
+	BEQ MOVE_UP
+	CMP r3, #1		; left
+	BEQ MOVE_LEFT
+	CMP r3, #2		; down
+	BEQ MOVE_DOWN
+	CMP r3, #3		; right
+	BEQ MOVE_RIGHT
+	B MOVE_DONE
+
+MOVE_UP:
+	SUB r5, r5, #1	; y--
+	B CHECK_MOVE
+
+MOVE_LEFT:
+	SUB r4, r4, #1	; x--
+	B CHECK_MOVE
+
+MOVE_DOWN:
+	ADD r5, r5, #1	; y++
+	B CHECK_MOVE
+
+MOVE_RIGHT:
+	ADD r4, r4, #1	; x++
+	B CHECK_MOVE
+
+CHECK_MOVE:
+	; bounds check
+	CMP r4, #0
+	BLT MOVE_DONE
+	CMP r4, #27
+	BGT MOVE_DONE
+	CMP r5, #0
+	BLT MOVE_DONE
+	CMP r5, #32
+	BGT MOVE_DONE
+
+	; board index = y * 28 + x
+	MOV r6, #28
+	MUL r7, r5, r6
+	ADD r7, r7, r4
+
+	LDR r8, ptr_board
+	ADD r8, r8, r7
+	LDRB r9, [r8]
+
+	CMP r9, #0		; wall ?
+	BEQ MOVE_DONE	; dont move if wall
+	CMP r9, #9		; door ?
+	BEQ MOVE_DONE	; dont move if door
+
+	; save old position
+	LDR r0, ptr_old_x
+	STRB r1, [r0]
+	LDR r0, ptr_old_y
+	STRB r2, [r0]
+
+	; clear the old tile
+	MOV r6, #28
+	MUL r7, r2, r6
+	ADD r7, r7, r1
+	LDR r8, ptr_board
+	ADD r8, r8, r7
+	MOV r0, #3
+	STRB r0, [r8]
+
+	; update pacman position
+	LDR r0, ptr_pm_x
+	STRB r4, [r0]
+	LDR r0, ptr_pm_y
+	STRB r5, [r0]
+
+	; save new position
+	LDR r0, ptr_new_x
+	STRB r4, [r0]
+	LDR r0, ptr_new_y
+	STRB r5, [r0]
+
+	; write pacman to the board
+	MOV r6, #28
+	MUL r7, r5, r6
+	ADD r7, r7, r4
+	LDR r8, ptr_board
+	ADD r8, r8, r7
+	MOV r0, #4
+	STRB r0, [r8]
+
+	; signal redraw instead of drawing inside of interrupt
+	; kept entering FaultISR infinite loop, nested BL calls was the problem me thinks idk tho
+	LDR r0, ptr_redraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
+MOVE_DONE:
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
+
+
+; ===========
+; MOVE CURSOR
+; ===========
+move_cursor:
+	PUSH {r4-r5,lr}	; Spill registers to stack
+
+	; r0 = y
+	; r1 = x
+
+	MOV r4, r0				; row
+	MOV r5, r1				; col
+
+	ADD r4, r4, #1
+	ADD r5, r5, #1
+
+	MOV r0, #27				; 'ESC'
+	BL output_character
+	MOV r0, #91				; '['
+	BL output_character
+
+	LDR r0, ptr_cursor_row
+	MOV r1, r4				; row
+	BL int2str				; convert to ascii
+	LDR r0, ptr_cursor_row
+	BL output_string
+
+	MOV r0, #59
+	BL output_character		; ';'
+
+	LDR r0, ptr_cursor_col
+	MOV r1, r5				; col
+	BL int2str				; convert to ascii
+	LDR r0, ptr_cursor_col
+	BL output_string
+
+	MOV r0, #72				; 'H'
+	BL output_character
+
+	POP {r4-r5,lr}  	; Restore registers from stack
+	MOV pc, lr       	; Return
+
+
+; ====================
+; DRAW INDIVIDUAL TILE
+; ====================
+draw_tile:
+	PUSH {r4-r8,lr}	; Spill registers to stack
+
+	; r0 = x
+	; r1 = y
+
+	MOV r4, r0	; r4 = x
+	MOV r5, r1	; r5 = y
+
+	; index of board array = y * 28 + x
+	MOV r6, #28
+	MUL r7, r5, r6
+	ADD r7, r7, r4
+
+	LDR r8, ptr_board
+	ADD r8, r8, r7
+	LDRB r6, [r8]		; tile
+
+	; move the cursor to the tile
+	MOV r0, r5
+	MOV r1, r4
+	BL move_cursor
+
+	; color
+	LDR r1, ptr_lookup_color
+	LSL r3, r6, #2
+	ADD r1, r1, r3
+	LDR r0, [r1]
+	BL output_string
+
+	; char
+	LDR r1, ptr_lookup_char
+	ADD r1, r1, r6
+	LDRB r0, [r1]
+	BL output_character
+
+	POP {r4-r8,lr}  	; Restore registers from stack
+	MOV pc, lr       	; Return
+
+simple_read_character:
+	PUSH {r4, lr}
+
+    MOV r1, #0xC000
+    MOVT r1, #0x4000          ; UART0 base
+
+WAIT_RX:
+    LDR r2, [r1, #0x018]      ; UARTFR
+    AND r2, r2, #0x10          ; RXFE bit
+    CMP r2, #0
+    BEQ RX_READY
+    B WAIT_RX
+
+RX_READY:
+    LDRB r0, [r1]     ; read UARTDR
+
+    POP {r4, lr}
+	MOV pc, lr	; Return
+

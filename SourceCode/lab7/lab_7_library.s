@@ -30,12 +30,12 @@ GPIODEN:			.equ 0x51C ; Digital Enable Register
 GPIODATA:           .equ 0x3FC ; Data Register
 GPIOPUR: 			.equ 0x510 ; Pull-Up Select Register
 
+
 ; =================
 ;  INITIALIZE UART
 ; =================
-
 uart_init:
-	PUSH {r4-r12,lr} 	; Store any registers in the range of r4 through r12
+	PUSH {r4-r5,lr} 	; Store any registers in the range of r4 through r12
 					; that are used in your routine.  Include lr if this
 					; routine calls another routine.
 
@@ -131,16 +131,16 @@ WAIT_UART0:
 	ORR  r5, r5, #0x11
 	STR  r5, [r4]
 
-	POP {r4-r12,lr}   ; Restore registers all registers preserved in the
+	POP {r4-r5,lr}   ; Restore registers all registers preserved in the
 						; PUSH at the top of this routine from the stack.
 	mov pc, lr
+
 
 ; ================================
 ;  INITIALIZE GPIO BUTTON AND LED
 ; ================================
-
 gpio_btn_and_LED_init:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r6,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -228,15 +228,15 @@ WAIT_CLK:
 	ORR r5, r5, #0x10
 	STR r5, [r4, #GPIOPUR]
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r6,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ==================
 ;  OUTPUT CHARACTER
 ; ==================
-
 output_character:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -251,15 +251,15 @@ OUTPUT_LOOP:
 
 	STRB r0, [r4]			; store character from r0 into the data register
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ================
 ;  READ CHARACTER
 ; ================
-
 read_character:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -274,19 +274,19 @@ READ_LOOP:
 
 	LDRB r0, [r4]			; store character from data register into r0
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; =============
 ;  READ STRING
 ; =============
-
 read_string:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
-    	MOV r4, r0			; move pointer to r4
+    MOV r4, r0			; move pointer to r4
 
 READ_CHAR_LOOP:
 	BL read_character	; call read character, returned in r0
@@ -309,15 +309,15 @@ DONE_READ_CHAR:
 	MOV r0, #0			; store null character to r0
 	STRB r0, [r4]		; null terminate
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ===============
 ;  OUTPUT STRING
 ; ===============
-
 output_string:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -334,15 +334,15 @@ OUT_STRING_LOOP:
 
 DONE_OUT_STRING:
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ========================
 ;  READ FROM PUSH BUTTONS
 ; ========================
-
 read_from_push_btns:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r6,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -356,15 +356,15 @@ read_from_push_btns:
 ;  	EOR r5, r5, r6	; flip, low active
     MOV r0, r5
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r6,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; =================
 ;  ILLUMINATE LEDS
 ; =================
-
 illuminate_LEDs:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -380,15 +380,15 @@ illuminate_LEDs:
 
     STR r5, [r4, #GPIODATA]
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ====================
 ;  ILLUMINATE RGB LED
 ; ====================
-
 illuminate_RGB_LED:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r6,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -437,15 +437,15 @@ WRITE:
 	ORR r6, r6, r5
 	STR r6, [r4, #GPIODATA]
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r6,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; =======================
 ;  READ TIVA PUSH BUTTON
 ; =======================
-
 read_tiva_push_button:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -465,15 +465,15 @@ SW_PRESSED:
 	MOV r0, #1
 SW_DONE:
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ===================
 ;  STRING TO INTEGER
 ; ===================
-
 str2int:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r9,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -521,13 +521,13 @@ LAST:
 S2I_END:
 	MOV r0, r5
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r9,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; ===================
 ;  INTEGER TO STRING
 ; ===================
-
 int2str:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 
@@ -604,12 +604,12 @@ I2S_END:
 	POP {r4-r12,lr}  	; Restore registers from stack
 	MOV pc, lr
 
+
 ; ===================
 ;  UNSIGNED DIVISION
 ; ===================
-
 unsigned_division:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -638,13 +638,13 @@ EXTRA:
 UNS_STOP:
 	MOV r0, r4		; copy quotient to r0
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
+
 
 ; =================
 ;  SIGNED DIVISION
 ; =================
-
 signed_division:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 
@@ -681,12 +681,12 @@ SIGN_STOP:
 	POP {r4-r12,lr}  	; Restore registers from stack
 	MOV pc, lr
 
+
 ; ===============
 ;  MODULUS (mod)
 ; ===============
-
 mod:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {lr}	; Spill registers to stack
 
           ; Your code is placed here
 
@@ -702,15 +702,15 @@ ZERO_REM:
 MOD_END:
 	MOV r0, r1
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {lr}  	; Restore registers from stack
 	MOV pc, lr
 
-; ==========================
-; TIMER INTERRUPT INITIALIZE
-; ==========================
 
+; ============================
+;  TIMER INTERRUPT INITIALIZE
+; ============================
 timer_interrupt_init:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r8,lr}	; Spill registers to stack
 	; Your code to initialize the timer interrupt goes here
 
 	; Connect Clock to Timer
@@ -765,15 +765,15 @@ WAIT_TIMER:
 	ORR r5, r5, #0x1
 	STR r5, [r4, #0x00C]
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r8,lr}  	; Restore registers from stack
 	MOV pc, lr
 
-; =========================
-; UART INTERRUPT INITIALIZE
-; =========================
 
+; ===========================
+;  UART INTERRUPT INITIALIZE
+; ===========================
 uart_interrupt_init:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r5,lr}	; Spill registers to stack
 	; Your code to initialize the UART0 interrupt goes here
 
 	; enable UART RX interrupt
@@ -790,15 +790,15 @@ uart_interrupt_init:
     ORR r5,r5,#0x20
     STR r5, [r4]
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r5,lr}  	; Restore registers from stack
 	MOV pc, lr
 
-; =========================
-; GPIO INTERRUPT INITIALIZE
-; =========================
 
+; ===========================
+;  GPIO INTERRUPT INITIALIZE
+; ===========================
 gpio_interrupt_init:
-	PUSH {r4-r12,lr}	; Spill registers to stack
+	PUSH {r4-r7,lr}	; Spill registers to stack
 	; Your code to initialize the SW1 interrupt goes here
 	; Don't forget to follow the procedure you followed in Lab #4
 	; to initialize SW1.
@@ -870,7 +870,7 @@ GPIO_WAIT_CLK:
 	ORR r6, r6, r7
 	STR r6, [r5]
 
-	POP {r4-r12,lr}  	; Restore registers from stack
+	POP {r4-r7,lr}  	; Restore registers from stack
 	MOV pc, lr
 
 

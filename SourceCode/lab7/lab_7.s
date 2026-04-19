@@ -1,6 +1,6 @@
-; ============
-; GLOBAL STUFF
-; ============
+; ==============
+;  GLOBAL STUFF
+; ==============
 	.data
 
 	.global prompt
@@ -24,11 +24,14 @@
 	.global remove_cursor
 	.global ansi_home
 	.global ansi_clear
+	.global ansi_black
+	.global score_flag
+	.global score_string
 
 
-; ============
-; ANSI STRINGS
-; ============
+; ==============
+;  ANSI STRINGS
+; ==============
 ansi_black:		.string 27, "[37;40m", 0		; foreground white, background black
 ansi_blue:		.string 27, "[37;44m", 0		; foreground white, background blue
 ansi_pacman:	.string 27, "[33;44m", 0		; foreground yellow, background blue
@@ -37,11 +40,14 @@ ansi_pinky:		.string 27, "[35m", 0			; foreground magenta
 ansi_inky:		.string 27, "[36m", 0			; foreground cyan
 ansi_clyde:		.string 27, "[38;5;208m", 0		; foreground orange
 ansi_door:		.string 27, "[106m",0			; background bright cyan
+remove_cursor:	.string 27, "[?25l", 0
+ansi_home:		.string 27, "[H", 0			; moves cursor to top left
+ansi_clear:		.string 27, "[2J", 0		; clears the screen
 
 
-; =============
-; LOOKUP TABLES
-; =============
+; ===============
+;  LOOKUP TABLES
+; ===============
 lookup_color:	.word ansi_black		; 0x00 - wall
 				.word ansi_blue			; 0x01 - pellet
 				.word ansi_blue			; 0x02 - power pellet
@@ -65,9 +71,9 @@ lookup_char:	.byte 0x20	; 0x00 - wall = ' '
 				.byte 0x20	; 0x09 - door = ' '
 
 
-; ===================
-; STARTING GAME BOARD
-; ===================
+; =====================
+;  STARTING GAME BOARD
+; =====================
 board:
 		.byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0	; 1
 		.byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
@@ -105,8 +111,8 @@ board:
 
 prompt:			.string "placeholder", 0
 lives:			.byte 0x04
-pm_x:			.byte 15
-pm_y:			.byte 26
+pm_x:			.byte 14	; 0 indexed
+pm_y:			.byte 25
 score:			.word 0x00000000
 dir:			.byte 0x00	; 0 = up, 1 = left, 2 = down, 3 = right
 pause:			.byte 0x01	; 1 = pause, 0 = not pause, starts paused
@@ -121,14 +127,13 @@ state:			.byte 0x00	; state of game, initialized to 0, game starts paused
 
 cursor_row:		.string "placeholder string", 0
 cursor_col:		.string "placeholder string", 0
+score_string:	.string "00000000", 0
 redraw_flag:	.byte 0x00
-old_x:			.byte 0
-old_y:			.byte 0
+score_flag:		.byte 0x00
+old_x:			.byte 14
+old_y:			.byte 25
 new_x:			.byte 0
 new_y:			.byte 0
-remove_cursor:	.string 27, "[?25l", 0
-ansi_home:		.string 27, "[H", 0			; moves cursor to top left
-ansi_clear:		.string 27, "[2J", 0		; clears the screen
 
 	.text
 
@@ -144,6 +149,8 @@ ansi_clear:		.string 27, "[2J", 0		; clears the screen
 	.global illuminate_RGB_LED		; added
 	.global gpio_btn_and_LED_init	; added
 	.global int2str					; added
+	.global unsigned_division		; added for lab 7 score logic
+	.global mod						; added for lab 7 score logic
 	.global timer_interrupt_init	; moved to library to keep main file clean
 	.global uart_interrupt_init		; moved to library for clean
 	.global gpio_interrupt_init		; moved to library for clean
@@ -170,25 +177,29 @@ ptr_new_y:			.word new_y
 ptr_remove_cursor:	.word remove_cursor
 ptr_ansi_home:		.word ansi_home
 ptr_ansi_clear:		.word ansi_clear
+ptr_ansi_black:		.word ansi_black
+ptr_score_flag:		.word score_flag
+ptr_score_string:	.word score_string
+
 
 ;
 ; -=-=-=-=-=-=- notes -=-=-=-=-=-=-
-; (kyle notes)
 ; bugs/issues:
-; 	- pacman moves now, but movement is off.
-;	- it thinks pacman is in a different location (slightly off) ?
-;	- at the first movement (to the right), pacman is printed to the right one and down one from the starting position
-;	- so that means the first reprint of pacman is 1 tile below where it should be
 ;
 ; next to do:
-; 	- fix pacman movement
-; 	- add normal pellet eating logic
-;	- increment score for every pellet eaten
+;	- start working on ghost movement
+;		- save position of each ghost, same as pacman with new and old x and y ... maybe ?
+;		- each ghost has same AI, random choice at any intersection
+;		- how to implement random choice logic ? pseudorandom but how ? ( slides on course website )
+;		- not sure how to implement the AI, saving all intersection locations as globals seems stupid
+;		- how do the rest of the ghosts leave their home ? preset movement path ?
+;		- when do the other three ghosts leave their home ?
 ;
 
-; ==========
-; LAB 7 MAIN
-; ==========
+
+; ============
+;  LAB 7 MAIN
+; ============
 lab7:								; This is your main routine which is called from your C wrapper.
 	PUSH {r4-r12,lr}   		; Preserve registers to adhere to the AAPCS
 
@@ -199,6 +210,10 @@ lab7:								; This is your main routine which is called from your C wrapper.
 	bl timer_interrupt_init
 
 ; 	game code start below here
+
+	; set black bg white fg
+	LDR r0, ptr_ansi_black
+	BL output_string
 
 	; clear the screen
 	LDR r0, ptr_ansi_clear
@@ -213,23 +228,96 @@ lab7:								; This is your main routine which is called from your C wrapper.
 	BL output_string
 
 	BL print_board
+	BL print_score		; show 000000 on start
 
 MAIN_LOOP:
-
+	; check for redraw
 	LDR r0, ptr_redraw_flag
 	LDRB r1, [r0]
 	CMP r1, #1
-	BNE MAIN_LOOP
+	BNE CHECK_SCORE_FLAG
 
 	; clear the redraw flag
 	MOV r1, #0
 	STRB r1, [r0]
 
+	; redraw
 	BL update_tiles
+
+CHECK_SCORE_FLAG:
+	; check for score update
+	LDR r0, ptr_score_flag
+	LDRB r1, [r0]
+	CMP r1, #1
+	BNE MAIN_LOOP
+
+	; clear the score update flag
+	MOV r1, #0
+	STRB r1, [r0]
+
+	; update score on board
+	BL print_score
 
 	B MAIN_LOOP
 
 	POP {r4-r12,lr}		; Restore registers to adhere to the AAPCS
+	MOV pc, lr
+
+
+; =============
+;  PRINT SCORE
+; =============
+print_score:
+	PUSH {r4-r7,lr}
+
+	; move cursor to score location, starts row 1 col 11
+	MOV r0, #1
+	MOV r1, #11
+	BL move_cursor
+
+	; switch to black bg, white fg
+	LDR r0, ptr_ansi_black
+	BL output_string
+
+	; load the score
+	LDR r5, ptr_score
+	LDR r4, [r5]
+
+	; extract 6 digits into score string from right to left
+	LDR r5, ptr_score_string
+	ADD r5, r5, #5				; point at last digit
+	MOV r6, #6					; digit counter
+
+SCORE_EXTRACT_LOOP:
+	MOV r0, #10
+	MOV r1, r4
+	BL mod				; r0 = r4 % 10
+	ADD r0, r0, #48		; convert to ascii
+	STRB r0, [r5]		; store next digit
+	SUB r5, r5, #1		; move pointer left
+
+	MOV r1, r4
+	MOV r0, #10
+	BL unsigned_division	; r0 = r4 / 10
+	MOV r4, r0
+
+	SUB r6, r6, #1		; decrement counter
+	CMP r6, #0
+	BGT SCORE_EXTRACT_LOOP
+
+	; output 6 digits
+	LDR r5, ptr_score_string
+	MOV r6, #6
+
+SCORE_OUTPUT_LOOP:
+	LDRB r0, [r5]
+	BL output_character
+	ADD r5, r5, #1	; increment pointer
+	SUB r6, r6, #1	; decrement counter
+	CMP r6, #0
+	BGT SCORE_OUTPUT_LOOP
+
+	POP {r4-r7,lr}
 	MOV pc, lr
 
 
@@ -261,9 +349,9 @@ update_tiles:
 	MOV pc, lr
 
 
-; ==================
-; PRINT ENTIRE BOARD
-; ==================
+; ====================
+;  PRINT ENTIRE BOARD
+; ====================
 print_board:
 	PUSH {r4-r7,lr}   		; Preserve registers to adhere to the AAPCS
 
@@ -289,9 +377,9 @@ row_loop:
 	MOV pc, lr
 
 
-; =====================
-; PRINT INDIVIDUAL ROWS
-; =====================
+; =======================
+;  PRINT INDIVIDUAL ROWS
+; =======================
 print_row:
 	PUSH {r4-r6,lr}   		; Preserve registers to adhere to the AAPCS
 
@@ -322,20 +410,16 @@ print_row_loop:
 	MOV pc, lr
 
 
-; ======================
-; UART INTERRUPT HANDLER
-; ======================
+; ========================
+;  UART INTERRUPT HANDLER
+; ========================
 UART0_Handler:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your UART handler goes here.
 	; Remember to preserver registers r4-r12 by pushing then popping
 	; them to & from the stack at the beginning & end of the handler
 
-;	BL simple_read_character
-
-	MOV r4, #0xC000
-	MOVT r4, #0x4000
-	LDRB r0, [r4]
+	BL simple_read_character
 
 	; if game paused, do nothing
 	LDR r4, ptr_pause
@@ -392,9 +476,9 @@ UART_HANDLER_END:
 	BX lr       	; Return
 
 
-; ========================
-; SWITCH INTERRUPT HANDLER
-; ========================
+; ==========================
+;  SWITCH INTERRUPT HANDLER
+; ==========================
 Switch_Handler:
 	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your UART handler goes here.
@@ -578,15 +662,30 @@ CHECK_MOVE:
 	MOV r1, #1
 	STRB r1, [r0]
 
+	; pellet check
+	CMP r9, #1
+	BNE MOVE_DONE
+
+	; add 10 to score
+	LDR r0, ptr_score
+	LDR r1, [r0]
+	ADD r1, r1, #10
+	STR r1, [r0]
+
+	; signal score update
+	LDR r0, ptr_score_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
 MOVE_DONE:
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
 
 
-; ===========
-; MOVE CURSOR
-; ===========
+; =============
+;  MOVE CURSOR
+; =============
 move_cursor:
 	PUSH {r4-r5,lr}	; Spill registers to stack
 
@@ -626,9 +725,9 @@ move_cursor:
 	MOV pc, lr       	; Return
 
 
-; ====================
-; DRAW INDIVIDUAL TILE
-; ====================
+; ======================
+;  DRAW INDIVIDUAL TILE
+; ======================
 draw_tile:
 	PUSH {r4-r8,lr}	; Spill registers to stack
 

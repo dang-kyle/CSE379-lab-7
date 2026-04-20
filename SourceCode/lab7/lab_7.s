@@ -212,7 +212,7 @@ ptr_ghost_valid_dirs:	.word ghost_valid_dirs
 ptr_xor_in:			.word xor_in
 
 
-; check
+; check 2
 ; -=-=-=-=-=-=- kyle notes -=-=-=-=-=-=-
 ; bugs/issues:
 ;	- prng implementation not actually random ?

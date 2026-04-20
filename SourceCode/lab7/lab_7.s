@@ -27,6 +27,16 @@
 	.global ansi_black
 	.global score_flag
 	.global score_string
+	.global ghost1_x
+	.global ghost1_y
+	.global ghost1_dir
+	.global ghost1_old_x
+	.global ghost1_old_y
+	.global ghost1_new_x
+	.global ghost1_new_y
+	.global ghost_redraw_flag
+	.global xor_in
+	.global ghost_valid_dirs
 
 
 ; ==============
@@ -134,6 +144,16 @@ old_x:			.byte 14
 old_y:			.byte 25
 new_x:			.byte 0
 new_y:			.byte 0
+ghost1_x:			.byte 13	; starting position, 0 indexed grid
+ghost1_y:			.byte 12
+ghost1_dir:			.byte 0		; starts moving up (invalid bc i want first movement right or left to be random)
+ghost1_old_x:		.byte 13
+ghost1_old_y:		.byte 12
+ghost1_new_x:		.byte 0
+ghost1_new_y:		.byte 0
+ghost_redraw_flag:	.byte 0
+ghost_valid_dirs:	.word 0x00000000		; temporary, up to 3 valid directions
+xor_in:				.word 0x1AB2BEEF
 
 	.text
 
@@ -180,18 +200,32 @@ ptr_ansi_clear:		.word ansi_clear
 ptr_ansi_black:		.word ansi_black
 ptr_score_flag:		.word score_flag
 ptr_score_string:	.word score_string
+ptr_ghost1_x:		.word ghost1_x
+ptr_ghost1_y:		.word ghost1_y
+ptr_ghost1_dir:		.word ghost1_dir
+ptr_ghost1_old_x:	.word ghost1_old_x
+ptr_ghost1_old_y:	.word ghost1_old_y
+ptr_ghost1_new_x:	.word ghost1_new_x
+ptr_ghost1_new_y:	.word ghost1_new_y
+ptr_ghost_redraw_flag:	.word ghost_redraw_flag
+ptr_ghost_valid_dirs:	.word ghost_valid_dirs
+ptr_xor_in:			.word xor_in
 
 
 ;
-; -=-=-=-=-=-=- notes -=-=-=-=-=-=-
+; -=-=-=-=-=-=- kyle notes -=-=-=-=-=-=-
 ; bugs/issues:
+;	- prng implementation not actually random ?
+;		- the ghosts choose the same "random" direction every time you run the game
+;		- so the path is always the same because the starting xorshift value is always the same
+;		- not sure what to do about this or how to make it different each time
+;		- the xorshift start value cannot be hardcoded for true random every game run
 ;
 ; next to do:
-;	- start working on ghost movement
-;		- save position of each ghost, same as pacman with new and old x and y ... maybe ?
-;		- each ghost has same AI, random choice at any intersection
-;		- how to implement random choice logic ? pseudorandom but how ? ( slides on course website )
-;		- not sure how to implement the AI, saving all intersection locations as globals seems stupid
+;	- keep working on ghost movement
+;		- save pellets under ghosts movement (rn they turn into empty path)
+;		- add wraparound movement for the two ends of the middle row (pacman + ghosts)
+;		- implement movement for the other three ghosts
 ;		- how do the rest of the ghosts leave their home ? preset movement path ?
 ;		- when do the other three ghosts leave their home ?
 ;
@@ -249,7 +283,7 @@ CHECK_SCORE_FLAG:
 	LDR r0, ptr_score_flag
 	LDRB r1, [r0]
 	CMP r1, #1
-	BNE MAIN_LOOP
+	BNE CHECK_GHOST_FLAG
 
 	; clear the score update flag
 	MOV r1, #0
@@ -258,9 +292,47 @@ CHECK_SCORE_FLAG:
 	; update score on board
 	BL print_score
 
+CHECK_GHOST_FLAG:
+	LDR r0, ptr_ghost_redraw_flag
+	LDRB r1, [r0]
+	CMP r1, #1
+	BNE MAIN_LOOP
+
+	MOV r1, #0
+	STRB r1, [r0]
+	BL update_ghost_tiles
+
 	B MAIN_LOOP
 
 	POP {r4-r12,lr}		; Restore registers to adhere to the AAPCS
+	MOV pc, lr
+
+
+; ====================
+;  UPDATE GHOST TILES
+; ====================
+update_ghost_tiles:
+	PUSH {r4-r5, lr}
+
+	; update the old position to match whats in memory
+	LDR r0, ptr_ghost1_old_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost1_old_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile
+
+	; update the new position to match whats in memory
+	LDR r0, ptr_ghost1_new_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost1_new_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile
+
+	POP {r4-r5, lr}
 	MOV pc, lr
 
 
@@ -556,6 +628,9 @@ Timer_Handler:
 	CMP r1, #1
 	BEQ MOVE_DONE
 
+	; move ghost
+	BL move_ghost
+
 	; load current position and direction
 	LDR r0, ptr_pm_x
 	LDRB r1, [r0]		; r1 = x
@@ -683,6 +758,216 @@ MOVE_DONE:
 	BX lr       	; Return
 
 
+; ============
+;  MOVE GHOST
+; ============
+move_ghost:
+	PUSH {r4-r11, lr}
+
+	; generate pseudo random number
+	BL xorshift			; r0 = random
+	MOV r4, r0
+
+	; load ghost pos and dir
+	LDR r0, ptr_ghost1_x
+	LDRB r5, [r0]
+	LDR r0, ptr_ghost1_y
+	LDRB r6, [r0]
+	LDR r0, ptr_ghost1_dir
+	LDRB r7, [r0]
+
+	; get reverse direction, dir + 2 (2 bit unsigned addition, so & 3)
+	ADD r8, r7, #2
+	AND r8, r8, #3		; r8 = reverse dir
+
+	; valid direction scan start
+	LDR r9, ptr_ghost_valid_dirs
+	MOV r10, #0		; r10 = valid count
+	MOV r11, #0		; r11 = direction iterator
+
+GHOST_SCAN:
+	CMP r11, #4		; max potential directions is 3
+	BGE GHOST_SCAN_DONE
+
+	CMP r11, r8		; ghosts cannot reverse
+	BEQ GHOST_SCAN_NEXT
+
+	; compute potential next position
+	MOV r1, r5			; r1 = potential x
+	MOV r2, r6			; r2 = potential y
+
+	CMP r11, #0
+	BEQ GHOST_SCAN_UP
+	CMP r11, #1
+	BEQ GHOST_SCAN_LEFT
+	CMP r11, #2
+	BEQ GHOST_SCAN_DOWN
+	CMP r11, #3
+	BEQ GHOST_SCAN_RIGHT
+
+GHOST_SCAN_UP:
+	SUB r2, r2, #1	; up: y--
+	B GHOST_SCAN_DIR_END
+GHOST_SCAN_LEFT:
+	SUB r1, r1, #1	; left: x--
+	B GHOST_SCAN_DIR_END
+GHOST_SCAN_DOWN:
+	ADD r2, r2, #1	; down: y++
+	B GHOST_SCAN_DIR_END
+GHOST_SCAN_RIGHT:
+	ADD r1, r1, #1	; right: x++
+
+GHOST_SCAN_DIR_END:
+
+	; bounds check
+	CMP r1, #0
+	BLT GHOST_SCAN_NEXT
+	CMP r1, #27
+	BGT GHOST_SCAN_NEXT
+	CMP r2, #0
+	BLT GHOST_SCAN_NEXT
+	CMP r2, #33
+	BGT GHOST_SCAN_NEXT
+
+	; check tile at potential position
+	MOV r0, #28
+	MUL r3, r2, r0
+	ADD r3, r3, r1		; tile in memory = (y*28)+x
+	LDR r0, ptr_board
+	ADD r0, r0, r3
+	LDRB r0, [r0]
+
+	CMP r0, #0		; wall ?
+	BEQ GHOST_SCAN_NEXT
+	CMP r0, #9		; door ?
+	BEQ GHOST_SCAN_NEXT
+
+	; tile is valid, store it
+	STRB r11, [r9, r10]
+	ADD r10, r10, #1	; increment valid count
+
+GHOST_SCAN_NEXT:
+	ADD r11, r11, #1	; increment direction iterator
+	B GHOST_SCAN
+
+GHOST_SCAN_DONE:
+	CMP r10, #0			; no valid directions (shouldnt ever happen)
+	BEQ MOVE_GHOST_END
+
+	; if only one direction, skip random
+	CMP r10, #1
+	BEQ GHOST_ONE_DIR
+
+	AND r1, r4, #0xFF	; dividend = lower 8 bits of random
+	MOV r0, r10			; divisor = valid valid directions count
+	BL mod		; r0 = choice
+	B GHOST_PICK_DIR
+
+GHOST_ONE_DIR:
+	MOV r0, #0
+
+GHOST_PICK_DIR:
+	LDRB r7, [r9, r0]	; r7 = chosen direction
+
+	; calculate new position
+	MOV r1, r5		; x
+	MOV r2, r6		; y
+
+	CMP r7, #0
+	BEQ GHOST_PICK_DIR_UP
+	CMP r7, #1
+	BEQ GHOST_PICK_DIR_LEFT
+	CMP r7, #2
+	BEQ GHOST_PICK_DIR_DOWN
+	CMP r7, #3
+	BEQ GHOST_PICK_DIR_RIGHT
+
+GHOST_PICK_DIR_UP:
+	SUB r2, r2, #1	; up: y--
+	B GHOST_PICK_DIR_DONE
+GHOST_PICK_DIR_LEFT:
+	SUB r1, r1, #1	; left: x--
+	B GHOST_PICK_DIR_DONE
+GHOST_PICK_DIR_DOWN:
+	ADD r2, r2, #1	; down: y++
+	B GHOST_PICK_DIR_DONE
+GHOST_PICK_DIR_RIGHT:
+	ADD r1, r1, #1	; right: x++
+
+GHOST_PICK_DIR_DONE:
+
+	; save the old position
+	LDR r0, ptr_ghost1_old_x
+	STRB r5, [r0]
+	LDR r0, ptr_ghost1_old_y
+	STRB r6, [r0]
+
+	; clear the old tile
+	MOV r0, #28
+	MUL r3, r6, r0
+	ADD r3, r3, r5		; tile in memory = (y*28)+x
+	LDR r0, ptr_board
+	ADD r0, r0, r3
+	MOV r3, #3		; 3 = empty path
+	STRB r3, [r0]
+
+	; update ghost position and direction
+	LDR r0, ptr_ghost1_x
+	STRB r1, [r0]
+	LDR r0, ptr_ghost1_y
+	STRB r2, [r0]
+	LDR r0, ptr_ghost1_dir
+	STRB r7, [r0]
+
+	; save new position
+	LDR r0, ptr_ghost1_new_x
+	STRB r1, [r0]
+	LDR r0, ptr_ghost1_new_y
+	STRB r2, [r0]
+
+	; write ghost to the board at new position
+	MOV r0, #28
+	MUL r3, r2, r0
+	ADD r3, r3, r1		; tile in memory = (y*28)+x
+	LDR r0, ptr_board
+	ADD r0, r0, r3
+	MOV r3, #5			; 5 = blinky
+	STRB r3, [r0]
+
+	; signal ghost redraw
+	LDR r0, ptr_ghost_redraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
+MOVE_GHOST_END:
+
+	POP {r4-r11, lr}
+	MOV pc, lr
+
+
+; =======================
+;  32 BIT XOR SHIFT PRNG
+; =======================
+xorshift:
+	PUSH {r4, lr}
+
+	LDR r4, ptr_xor_in
+	LDR r0, [r4]		; load the current start
+	LSL r1, r0, #13
+	EOR r0, r0, r1		; randum_num ^= randum_num << 13
+	LSR r1, r0, #17
+	EOR r0, r0, r1		; randum_num ^= randum_num >> 17
+	LSL r1, r0, #5
+	EOR r0, r0, r1		; randum_num ^= randum_num << 5
+
+	; store new start
+	STR r0, [r4]
+	; return random num in r0
+
+	POP {r4, lr}
+	MOV pc, lr
+
+
 ; =============
 ;  MOVE CURSOR
 ; =============
@@ -767,6 +1052,10 @@ draw_tile:
 	POP {r4-r8,lr}  	; Restore registers from stack
 	MOV pc, lr       	; Return
 
+
+; =======================
+;  SIMPLE READ CHARACTER
+; =======================
 simple_read_character:
 	PUSH {r4, lr}
 
@@ -785,4 +1074,3 @@ RX_READY:
 
     POP {r4, lr}
 	MOV pc, lr	; Return
-

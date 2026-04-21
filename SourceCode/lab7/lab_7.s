@@ -37,6 +37,7 @@
 	.global ghost_redraw_flag
 	.global xor_in
 	.global ghost_valid_dirs
+	.global ghost1_under
 
 
 ; ==============
@@ -50,9 +51,9 @@ ansi_pinky:		.string 27, "[35m", 0			; foreground magenta
 ansi_inky:		.string 27, "[36m", 0			; foreground cyan
 ansi_clyde:		.string 27, "[38;5;208m", 0		; foreground orange
 ansi_door:		.string 27, "[106m",0			; background bright cyan
-remove_cursor:	.string 27, "[?25l", 0
-ansi_home:		.string 27, "[H", 0			; moves cursor to top left
-ansi_clear:		.string 27, "[2J", 0		; clears the screen
+remove_cursor:	.string 27, "[?25l", 0			; makes the cursor not visible
+ansi_home:		.string 27, "[H", 0				; moves cursor to top left
+ansi_clear:		.string 27, "[2J", 0			; clears the screen
 
 
 ; ===============
@@ -135,15 +136,15 @@ state:			.byte 0x00	; state of game, initialized to 0, game starts paused
 ; 	3 = end round
 ; 	4 = game over
 
-cursor_row:		.string "placeholder string", 0
-cursor_col:		.string "placeholder string", 0
-score_string:	.string "00000000", 0
-redraw_flag:	.byte 0x00
-score_flag:		.byte 0x00
-old_x:			.byte 14
-old_y:			.byte 25
-new_x:			.byte 0
-new_y:			.byte 0
+cursor_row:			.string "placeholder string", 0
+cursor_col:			.string "placeholder string", 0
+score_string:		.string "00000000", 0
+redraw_flag:		.byte 0x00
+score_flag:			.byte 0x00
+old_x:				.byte 14
+old_y:				.byte 25
+new_x:				.byte 0
+new_y:				.byte 0
 ghost1_x:			.byte 13	; starting position, 0 indexed grid
 ghost1_y:			.byte 12
 ghost1_dir:			.byte 0		; starts moving up (invalid bc i want first movement right or left to be random)
@@ -154,6 +155,7 @@ ghost1_new_y:		.byte 0
 ghost_redraw_flag:	.byte 0
 ghost_valid_dirs:	.word 0x00000000		; temporary, up to 3 valid directions
 xor_in:				.word 0x1AB2BEEF
+ghost1_under:		.byte 3		; starts on an empty path
 
 	.text
 
@@ -171,65 +173,81 @@ xor_in:				.word 0x1AB2BEEF
 	.global int2str					; added
 	.global unsigned_division		; added for lab 7 score logic
 	.global mod						; added for lab 7 score logic
-	.global timer_interrupt_init	; moved to library to keep main file clean
+	.global timer_interrupt_init	; moved to library to keep main file clean, changed to 0.25 s for lab 7
 	.global uart_interrupt_init		; moved to library for clean
 	.global gpio_interrupt_init		; moved to library for clean
 	.global lab7
 
-ptr_prompt:			.word prompt
-ptr_lookup_color:	.word lookup_color
-ptr_lookup_char:	.word lookup_char
-ptr_board:			.word board
-ptr_lives:			.word lives
-ptr_pm_x:			.word pm_x
-ptr_pm_y:			.word pm_y
-ptr_score:			.word score
-ptr_dir:			.word dir
-ptr_pause:			.word pause
-ptr_state:			.word state
-ptr_cursor_row:		.word cursor_row
-ptr_cursor_col:		.word cursor_col
-ptr_redraw_flag:	.word redraw_flag
-ptr_old_x:			.word old_x
-ptr_old_y:			.word old_y
-ptr_new_x:			.word new_x
-ptr_new_y:			.word new_y
-ptr_remove_cursor:	.word remove_cursor
-ptr_ansi_home:		.word ansi_home
-ptr_ansi_clear:		.word ansi_clear
-ptr_ansi_black:		.word ansi_black
-ptr_score_flag:		.word score_flag
-ptr_score_string:	.word score_string
-ptr_ghost1_x:		.word ghost1_x
-ptr_ghost1_y:		.word ghost1_y
-ptr_ghost1_dir:		.word ghost1_dir
-ptr_ghost1_old_x:	.word ghost1_old_x
-ptr_ghost1_old_y:	.word ghost1_old_y
-ptr_ghost1_new_x:	.word ghost1_new_x
-ptr_ghost1_new_y:	.word ghost1_new_y
+
+; ==========
+;  POINTERS
+; ==========
+ptr_prompt:				.word prompt
+ptr_lookup_color:		.word lookup_color
+ptr_lookup_char:		.word lookup_char
+ptr_board:				.word board
+ptr_lives:				.word lives
+ptr_pm_x:				.word pm_x
+ptr_pm_y:				.word pm_y
+ptr_score:				.word score
+ptr_dir:				.word dir
+ptr_pause:				.word pause
+ptr_state:				.word state
+ptr_cursor_row:			.word cursor_row
+ptr_cursor_col:			.word cursor_col
+ptr_redraw_flag:		.word redraw_flag
+ptr_old_x:				.word old_x
+ptr_old_y:				.word old_y
+ptr_new_x:				.word new_x
+ptr_new_y:				.word new_y
+ptr_remove_cursor:		.word remove_cursor
+ptr_ansi_home:			.word ansi_home
+ptr_ansi_clear:			.word ansi_clear
+ptr_ansi_black:			.word ansi_black
+ptr_score_flag:			.word score_flag
+ptr_score_string:		.word score_string
+ptr_ghost1_x:			.word ghost1_x
+ptr_ghost1_y:			.word ghost1_y
+ptr_ghost1_dir:			.word ghost1_dir
+ptr_ghost1_old_x:		.word ghost1_old_x
+ptr_ghost1_old_y:		.word ghost1_old_y
+ptr_ghost1_new_x:		.word ghost1_new_x
+ptr_ghost1_new_y:		.word ghost1_new_y
 ptr_ghost_redraw_flag:	.word ghost_redraw_flag
 ptr_ghost_valid_dirs:	.word ghost_valid_dirs
-ptr_xor_in:			.word xor_in
+ptr_xor_in:				.word xor_in
+ptr_ghost1_under:		.word ghost1_under
 
 
 ;
 ; -=-=-=-=-=-=- kyle notes -=-=-=-=-=-=-
+;
+;	- 238 normal pellets in total
+;
 ; bugs/issues:
 ;	- prng implementation not actually random ?
 ;		- the ghosts choose the same "random" direction every time you run the game
 ;		- so the path is always the same because the starting xorshift value is always the same
 ;		- not sure what to do about this or how to make it different each time
 ;		- the xorshift start value cannot be hardcoded for true random every game run
+;		- maybe involve the score with the xorshift input ? or maybe time somehow ?
 ;
 ; next to do:
 ;	- keep working on ghost movement
-;		- save pellets under ghosts movement (rn they turn into empty path)
-;		- add wraparound movement for the two ends of the middle row (pacman + ghosts)
 ;		- implement movement for the other three ghosts
 ;		- how do the rest of the ghosts leave their home ? preset movement path ?
-;		- when do the other three ghosts leave their home ?
+;		- when do the other three ghosts leave their home ? based on pellets collected i think is good
+;	- lose life logic
+;		- start with all 4 leds turned on on the daughter board
+;		- when pacman and a ghost collide, lose life and turn of one led
+;		- send pacman to starting position when life lost, ghosts im not sure ?
+;		- game over logic
+;	- powerup pellet logic
+;		- lasts 15 (?) seconds
+;		- ghosts turn to 'W'
+;		- ghost movement ai does not change
+;		- eaten ghosts sent back to home, not sure how they reenter after powerup is over
 ;
-
 
 ; ============
 ;  LAB 7 MAIN
@@ -313,6 +331,8 @@ CHECK_GHOST_FLAG:
 ; ====================
 update_ghost_tiles:
 	PUSH {r4-r5, lr}
+
+	; only blinky implemented so far
 
 	; update the old position to match whats in memory
 	LDR r0, ptr_ghost1_old_x
@@ -398,6 +418,8 @@ SCORE_OUTPUT_LOOP:
 ; ==============
 update_tiles:
 	PUSH {r4-r5,lr}
+
+	; updates pacmans old and new tiles on putty
 
 	; draw old tile
 	LDR r0, ptr_old_x
@@ -515,8 +537,9 @@ UART0_Handler:
 	CMP r0, #100		; ascii 'd'
 	BEQ SET_RIGHT
 
-	B UART_HANDLER_END
+	B UART_HANDLER_END		; ignore all non wasd inputs
 
+; set new direction
 SET_UP:
 	MOV r6, #0
 	STRB r6, [r4]
@@ -535,7 +558,6 @@ SET_DOWN:
 SET_RIGHT:
 	MOV r6, #3
 	STRB r6, [r4]
-	B UART_HANDLER_END
 
 UART_HANDLER_END:
 	; clear UART interrupt
@@ -563,11 +585,11 @@ Switch_Handler:
 	STRB r5, [r4]
 
 	MOV r4, #0x0000
-	MOVT r4, #0x4003
+	MOVT r4, #0x4003	; base address for timer, need to enable or disable
 
 	LDR r6, ptr_state
 
-	CMP r5, #1
+	CMP r5, #1			; p
 	BEQ DISABLE_TIMER
 
 	B ENABLE_TIMER
@@ -584,7 +606,7 @@ DISABLE_TIMER:
 ENABLE_TIMER:
 	MOV r7, #1	; set state to normal
 				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-				; needs to be changed to remember state before the game was paused
+				; needs to be changed to remember state before the game was paused (powerup)
 				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	STRB r7, [r6]
 
@@ -668,14 +690,26 @@ MOVE_DOWN:
 
 MOVE_RIGHT:
 	ADD r4, r4, #1	; x++
-	B CHECK_MOVE
 
 CHECK_MOVE:
-	; bounds check
+	; x < 0, wrap around to x = 27 on y = 16
 	CMP r4, #0
-	BLT MOVE_DONE
+	BGE PM_CHECK_X_MAX
+	CMP r5, #16
+	BNE MOVE_DONE
+	MOV r4, #27
+	B PM_CHECK_Y
+
+PM_CHECK_X_MAX:
+	; x > 27, wrap around to x = 0 on y = 16
 	CMP r4, #27
-	BGT MOVE_DONE
+	BLE PM_CHECK_Y
+	CMP r5, #16
+	BNE MOVE_DONE
+	MOV r4, #0
+
+PM_CHECK_Y:
+	; check y bounds, should never happen
 	CMP r5, #0
 	BLT MOVE_DONE
 	CMP r5, #32
@@ -818,15 +852,27 @@ GHOST_SCAN_RIGHT:
 	ADD r1, r1, #1	; right: x++
 
 GHOST_SCAN_DIR_END:
-
-	; bounds check
+	; x < 0, wrap around to x = 27 on y = 16
 	CMP r1, #0
-	BLT GHOST_SCAN_NEXT
+	BGE GHOST_CHECK_X_MAX
+	CMP r2, #16
+	BNE GHOST_SCAN_NEXT
+	MOV r1, #27
+	B GHOST_CHECK_Y
+
+GHOST_CHECK_X_MAX:
+	; x > 27, wrap around to x = 0 on y = 16
 	CMP r1, #27
-	BGT GHOST_SCAN_NEXT
+	BLE GHOST_CHECK_Y
+	CMP r2, #16
+	BNE GHOST_SCAN_NEXT
+	MOV r1, #0
+
+GHOST_CHECK_Y:
+	; y bounds check, should never happen
 	CMP r2, #0
 	BLT GHOST_SCAN_NEXT
-	CMP r2, #33
+	CMP r2, #32
 	BGT GHOST_SCAN_NEXT
 
 	; check tile at potential position
@@ -884,15 +930,32 @@ GHOST_PICK_DIR:
 
 GHOST_PICK_DIR_UP:
 	SUB r2, r2, #1	; up: y--
-	B GHOST_PICK_DIR_DONE
+	B GHOST_PICK_DIR_WRAP
 GHOST_PICK_DIR_LEFT:
 	SUB r1, r1, #1	; left: x--
-	B GHOST_PICK_DIR_DONE
+	B GHOST_PICK_DIR_WRAP
 GHOST_PICK_DIR_DOWN:
 	ADD r2, r2, #1	; down: y++
-	B GHOST_PICK_DIR_DONE
+	B GHOST_PICK_DIR_WRAP
 GHOST_PICK_DIR_RIGHT:
 	ADD r1, r1, #1	; right: x++
+
+GHOST_PICK_DIR_WRAP:
+	; x < 0, wrap around to x = 27 on y = 16
+	CMP r1, #0
+	BGE GHOST_PICK_CHECK_X_MAX
+	CMP r2, #16
+	BNE GHOST_PICK_DIR_DONE
+	MOV r1, #27
+	B GHOST_PICK_DIR_DONE
+
+GHOST_PICK_CHECK_X_MAX:
+	; x > 27, wrap around to x = 0 on y = 16
+	CMP r1, #27
+	BLE GHOST_PICK_DIR_DONE
+	CMP r2, #16
+	BNE GHOST_PICK_DIR_DONE
+	MOV r1, #0
 
 GHOST_PICK_DIR_DONE:
 
@@ -908,8 +971,9 @@ GHOST_PICK_DIR_DONE:
 	ADD r3, r3, r5		; tile in memory = (y*28)+x
 	LDR r0, ptr_board
 	ADD r0, r0, r3
-	MOV r3, #3		; 3 = empty path
-	STRB r3, [r0]
+	LDR r8, ptr_ghost1_under
+	LDRB r8, [r8]		; load the saved tile
+	STRB r8, [r0]		; restore the saved tile
 
 	; update ghost position and direction
 	LDR r0, ptr_ghost1_x
@@ -925,12 +989,17 @@ GHOST_PICK_DIR_DONE:
 	LDR r0, ptr_ghost1_new_y
 	STRB r2, [r0]
 
-	; write ghost to the board at new position
+	; save tile at new position before overwriting
 	MOV r0, #28
 	MUL r3, r2, r0
 	ADD r3, r3, r1		; tile in memory = (y*28)+x
 	LDR r0, ptr_board
 	ADD r0, r0, r3
+	LDRB r8, [r0]
+	LDR r10, ptr_ghost1_under
+	STRB r8, [r10]		; save whats under blinky
+
+	; write blinky to new position
 	MOV r3, #5			; 5 = blinky
 	STRB r3, [r0]
 

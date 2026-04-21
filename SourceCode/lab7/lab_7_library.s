@@ -743,8 +743,8 @@ WAIT_TIMER:
 	STR r5, [r4, #0x004]	; GPTMTAMR
 
 	; Setup Interval Period
-	MOV r5, #0x2400
-	MOVT r5, #0x00F4	; 1 sec = 16,000,000 = 0x00F42400
+	MOV r5, #0x0900
+	MOVT r5, #0x003D	; 0.25 sec = 4,000,000 = 0x003D0900
 	STR r5, [r4, #0x028]	; GPTMTAILR
 
 	; Enable Timer to Interrupt Processor

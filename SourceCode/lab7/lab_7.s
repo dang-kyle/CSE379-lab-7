@@ -38,6 +38,34 @@
 	.global xor_in
 	.global ghost_valid_dirs
 	.global ghost1_under
+	.global ghost2_x
+	.global ghost2_y
+	.global ghost2_dir
+	.global ghost2_old_x
+	.global ghost2_old_y
+	.global ghost2_new_x
+	.global ghost2_new_y
+	.global ghost2_under
+	.global ghost2_active
+	.global ghost3_x
+	.global ghost3_y
+	.global ghost3_dir
+	.global ghost3_old_x
+	.global ghost3_old_y
+	.global ghost3_new_x
+	.global ghost3_new_y
+	.global ghost3_under
+	.global ghost3_active
+	.global ghost4_x
+	.global ghost4_y
+	.global ghost4_dir
+	.global ghost4_old_x
+	.global ghost4_old_y
+	.global ghost4_new_x
+	.global ghost4_new_y
+	.global ghost4_under
+	.global ghost4_active
+	.global pellets_eaten
 
 
 ; ==============
@@ -154,8 +182,39 @@ ghost1_new_x:		.byte 0
 ghost1_new_y:		.byte 0
 ghost_redraw_flag:	.byte 0
 ghost_valid_dirs:	.word 0x00000000		; temporary, up to 3 valid directions
-xor_in:				.word 0x1AB2BEEF
+xor_in:				.word 0x1234ABCD
 ghost1_under:		.byte 3		; starts on an empty path
+pellets_eaten:		.byte 0
+
+ghost2_x:			.byte 13
+ghost2_y:			.byte 17
+ghost2_dir:			.byte 0
+ghost2_old_x:		.byte 13
+ghost2_old_y:		.byte 17
+ghost2_new_x:		.byte 0
+ghost2_new_y:		.byte 0
+ghost2_under:		.byte 3
+ghost2_active:		.byte 0
+
+ghost3_x:			.byte 12
+ghost3_y:			.byte 15
+ghost3_dir:			.byte 0
+ghost3_old_x:		.byte 12
+ghost3_old_y:		.byte 15
+ghost3_new_x:		.byte 0
+ghost3_new_y:		.byte 0
+ghost3_under:		.byte 3
+ghost3_active:		.byte 0
+
+ghost4_x:			.byte 15
+ghost4_y:			.byte 16
+ghost4_dir:			.byte 0
+ghost4_old_x:		.byte 15
+ghost4_old_y:		.byte 16
+ghost4_new_x:		.byte 0
+ghost4_new_y:		.byte 0
+ghost4_under:		.byte 3
+ghost4_active:		.byte 0
 
 	.text
 
@@ -169,6 +228,7 @@ ghost1_under:		.byte 3		; starts on an empty path
 	.global uart_init				; This is from your Lab #4 Library
 	.global read_character			; added
 	.global illuminate_RGB_LED		; added
+	.global illuminate_LEDs			; added for lab 7 lives
 	.global gpio_btn_and_LED_init	; added
 	.global int2str					; added
 	.global unsigned_division		; added for lab 7 score logic
@@ -217,10 +277,48 @@ ptr_ghost_redraw_flag:	.word ghost_redraw_flag
 ptr_ghost_valid_dirs:	.word ghost_valid_dirs
 ptr_xor_in:				.word xor_in
 ptr_ghost1_under:		.word ghost1_under
+ptr_pellets_eaten:		.word pellets_eaten
+
+ptr_ghost2_x:			.word ghost2_x
+ptr_ghost2_y:			.word ghost2_y
+ptr_ghost2_dir:			.word ghost2_dir
+ptr_ghost2_old_x:		.word ghost2_old_x
+ptr_ghost2_old_y:		.word ghost2_old_y
+ptr_ghost2_new_x:		.word ghost2_new_x
+ptr_ghost2_new_y:		.word ghost2_new_y
+ptr_ghost2_under:		.word ghost2_under
+ptr_ghost2_active:		.word ghost2_active
+
+ptr_ghost3_x:			.word ghost3_x
+ptr_ghost3_y:			.word ghost3_y
+ptr_ghost3_dir:			.word ghost3_dir
+ptr_ghost3_old_x:		.word ghost3_old_x
+ptr_ghost3_old_y:		.word ghost3_old_y
+ptr_ghost3_new_x:		.word ghost3_new_x
+ptr_ghost3_new_y:		.word ghost3_new_y
+ptr_ghost3_under:		.word ghost3_under
+ptr_ghost3_active:		.word ghost3_active
+
+ptr_ghost4_x:			.word ghost4_x
+ptr_ghost4_y:			.word ghost4_y
+ptr_ghost4_dir:			.word ghost4_dir
+ptr_ghost4_old_x:		.word ghost4_old_x
+ptr_ghost4_old_y:		.word ghost4_old_y
+ptr_ghost4_new_x:		.word ghost4_new_x
+ptr_ghost4_new_y:		.word ghost4_new_y
+ptr_ghost4_under:		.word ghost4_under
+ptr_ghost4_active:		.word ghost4_active
+
+ghost_table:
+	.word ghost1_x, ghost1_y, ghost1_dir, ghost1_old_x, ghost1_old_y, ghost1_new_x, ghost1_new_y, ghost1_under
+	.word ghost2_x, ghost2_y, ghost2_dir, ghost2_old_x, ghost2_old_y, ghost2_new_x, ghost2_new_y, ghost2_under
+	.word ghost3_x, ghost3_y, ghost3_dir, ghost3_old_x, ghost3_old_y, ghost3_new_x, ghost3_new_y, ghost3_under
+	.word ghost4_x, ghost4_y, ghost4_dir, ghost4_old_x, ghost4_old_y, ghost4_new_x, ghost4_new_y, ghost4_under
+ptr_ghost_table:		.word ghost_table
 
 
 ;
-; -=-=-=-=-=-=- kyle notes -=-=-=-=-=-=-
+; -=-=-=-=-=-=- notes -=-=-=-=-=-=-
 ;
 ;	- 238 normal pellets in total
 ;
@@ -238,9 +336,7 @@ ptr_ghost1_under:		.word ghost1_under
 ;		- how do the rest of the ghosts leave their home ? preset movement path ?
 ;		- when do the other three ghosts leave their home ? based on pellets collected i think is good
 ;	- lose life logic
-;		- start with all 4 leds turned on on the daughter board
-;		- when pacman and a ghost collide, lose life and turn of one led
-;		- send pacman to starting position when life lost, ghosts im not sure ?
+;		- when pacman and a ghost collide, lose life and turn off one led
 ;		- game over logic
 ;	- powerup pellet logic
 ;		- lasts 15 (?) seconds
@@ -248,6 +344,7 @@ ptr_ghost1_under:		.word ghost1_under
 ;		- ghost movement ai does not change
 ;		- eaten ghosts sent back to home, not sure how they reenter after powerup is over
 ;
+
 
 ; ============
 ;  LAB 7 MAIN
@@ -262,6 +359,10 @@ lab7:								; This is your main routine which is called from your C wrapper.
 	bl timer_interrupt_init
 
 ; 	game code start below here
+
+	; enable all 4 leds, 4 lives
+	MOV r0, #0x0F
+	BL illuminate_LEDs
 
 	; set black bg white fg
 	LDR r0, ptr_ansi_black
@@ -311,18 +412,454 @@ CHECK_SCORE_FLAG:
 	BL print_score
 
 CHECK_GHOST_FLAG:
+	; check for ghost updates
 	LDR r0, ptr_ghost_redraw_flag
 	LDRB r1, [r0]
 	CMP r1, #1
 	BNE MAIN_LOOP
 
+	; clear the ghost update flag
 	MOV r1, #0
 	STRB r1, [r0]
+
+	; update ghosts on the board
 	BL update_ghost_tiles
+
+	BL check_collisionAndLives
 
 	B MAIN_LOOP
 
 	POP {r4-r12,lr}		; Restore registers to adhere to the AAPCS
+	MOV pc, lr
+
+
+; ===========================
+;  CHECK COLLISION AND LIVES
+; ===========================
+check_collisionAndLives:
+	PUSH {r4-r11,lr}
+
+	; updated after implementing all 4 ghosts
+
+	; load pacman position
+    LDR r0, ptr_pm_x
+    LDRB r4, [r0]		; pacman x
+    LDR r0, ptr_pm_y
+    LDRB r5, [r0]		; pacman y
+    ; load pacman old position
+    LDR r0, ptr_old_x
+    LDRB r8, [r0]		; pacman old x
+    LDR r0, ptr_old_y
+    LDRB r9, [r0]  		; pacman old y
+
+    ; check ghost1, always active
+    LDR r0, ptr_ghost1_x
+    LDRB r6, [r0]
+    LDR r0, ptr_ghost1_y
+    LDRB r7, [r0]
+    CMP r4, r6
+    BNE CL_SWAP1
+    CMP r5, r7
+    BEQ CL_HIT
+CL_SWAP1:
+    LDR r0, ptr_ghost1_old_x
+    LDRB r10, [r0]
+    LDR r0, ptr_ghost1_old_y
+    LDRB r11, [r0]
+    CMP r4, r10
+    BNE CL_CHECK_G2
+    CMP r5, r11
+    BNE CL_CHECK_G2
+    CMP r6, r8
+    BNE CL_CHECK_G2
+    CMP r7, r9
+    BEQ CL_HIT
+
+    ; check ghost2
+CL_CHECK_G2:
+    LDR r0, ptr_ghost2_active
+    LDRB r10, [r0]
+    CMP r10, #1
+    BNE CL_CHECK_G3
+    LDR r0, ptr_ghost2_x
+    LDRB r6, [r0]
+    LDR r0, ptr_ghost2_y
+    LDRB r7, [r0]
+    CMP r4, r6
+    BNE CL_SWAP2
+    CMP r5, r7
+    BEQ CL_HIT
+CL_SWAP2:
+    LDR r0, ptr_ghost2_old_x
+    LDRB r10, [r0]
+    LDR r0, ptr_ghost2_old_y
+    LDRB r11, [r0]
+    CMP r4, r10
+    BNE CL_CHECK_G3
+    CMP r5, r11
+    BNE CL_CHECK_G3
+    CMP r6, r8
+    BNE CL_CHECK_G3
+    CMP r7, r9
+    BEQ CL_HIT
+
+    ; check ghost3
+CL_CHECK_G3:
+    LDR r0, ptr_ghost3_active
+    LDRB r10, [r0]
+    CMP r10, #1
+    BNE CL_CHECK_G4
+    LDR r0, ptr_ghost3_x
+    LDRB r6, [r0]
+    LDR r0, ptr_ghost3_y
+    LDRB r7, [r0]
+    CMP r4, r6
+    BNE CL_SWAP3
+    CMP r5, r7
+    BEQ CL_HIT
+CL_SWAP3:
+    LDR r0, ptr_ghost3_old_x
+    LDRB r10, [r0]
+    LDR r0, ptr_ghost3_old_y
+    LDRB r11, [r0]
+    CMP r4, r10
+    BNE CL_CHECK_G4
+    CMP r5, r11
+    BNE CL_CHECK_G4
+    CMP r6, r8
+    BNE CL_CHECK_G4
+    CMP r7, r9
+    BEQ CL_HIT
+
+    ; check ghost4
+CL_CHECK_G4:
+    LDR r0, ptr_ghost4_active
+    LDRB r10, [r0]
+    CMP r10, #1
+    BNE CL_DONE
+    LDR r0, ptr_ghost4_x
+    LDRB r6, [r0]
+    LDR r0, ptr_ghost4_y
+    LDRB r7, [r0]
+    CMP r4, r6
+    BNE CL_SWAP4
+    CMP r5, r7
+    BEQ CL_HIT
+CL_SWAP4:
+    LDR r0, ptr_ghost4_old_x
+    LDRB r10, [r0]
+    LDR r0, ptr_ghost4_old_y
+    LDRB r11, [r0]
+    CMP r4, r10
+    BNE CL_DONE
+    CMP r5, r11
+    BNE CL_DONE
+    CMP r6, r8
+    BNE CL_DONE
+    CMP r7, r9
+    BNE CL_DONE
+
+CL_HIT:
+    LDR r0, ptr_lives
+    LDRB r1, [r0]
+    CMP r1, #0
+    BEQ CL_DONE
+
+    SUB r1, r1, #1
+    STRB r1, [r0]
+
+    CMP r1, #3
+    BEQ CL_L3
+    CMP r1, #2
+    BEQ CL_L2
+    CMP r1, #1
+    BEQ CL_L1
+    B CL_L0
+
+CL_L3:
+	MOV r0, #0x07
+	BL illuminate_LEDs
+	B CL_RESET
+CL_L2:
+	MOV r0, #0x03
+	BL illuminate_LEDs
+	B CL_RESET
+CL_L1:
+	MOV r0, #0x01
+	BL illuminate_LEDs
+	B CL_RESET
+CL_L0:
+    MOV r0, #0x00
+    BL illuminate_LEDs
+    LDR r0, ptr_state
+    MOV r1, #4
+    STRB r1, [r0]
+    B CL_DONE
+
+CL_RESET:
+    ; pause
+    LDR r0, ptr_pause
+    MOV r1, #1
+    STRB r1, [r0]
+
+    ; stop timer
+    MOV r0, #0x0000
+    MOVT r0, #0x4003
+    LDR r1, [r0, #0x00C]
+    BIC r1, r1, #0x1
+    STR r1, [r0, #0x00C]
+
+    ; clear all pacman and ghost tiles from board
+    ; r4 = pm_x, r5 = pm_y
+    MOV r0, #28
+    MUL r2, r5, r0
+    ADD r2, r2, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r2
+    MOV r2, #3
+    STRB r2, [r0]
+
+    ; ghost1
+    LDR r0, ptr_ghost1_x
+    LDRB r4, [r0]
+    LDR r0, ptr_ghost1_y
+    LDRB r5, [r0]
+    MOV r0, #28
+    MUL r2, r5, r0
+    ADD r2, r2, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r2
+    LDR r2, ptr_ghost1_under
+    LDRB r2, [r2]
+    STRB r2, [r0]
+
+    ; ghost2, if active
+    LDR r0, ptr_ghost2_active
+    LDRB r4, [r0]
+    CMP r4, #1
+    BNE CL_SKIP_CLEAR_G2
+    LDR r0, ptr_ghost2_x
+    LDRB r4, [r0]
+    LDR r0, ptr_ghost2_y
+    LDRB r5, [r0]
+    MOV r0, #28
+    MUL r2, r5, r0
+    ADD r2, r2, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r2
+    LDR r2, ptr_ghost2_under
+    LDRB r2, [r2]
+    STRB r2, [r0]
+
+CL_SKIP_CLEAR_G2:
+	; ghost3 (if active)
+    LDR r0, ptr_ghost3_active
+    LDRB r4, [r0]
+    CMP r4, #1
+    BNE CL_SKIP_CLEAR_G3
+    LDR r0, ptr_ghost3_x
+    LDRB r4, [r0]
+    LDR r0, ptr_ghost3_y
+    LDRB r5, [r0]
+    MOV r0, #28
+    MUL r2, r5, r0
+    ADD r2, r2, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r2
+    LDR r2, ptr_ghost3_under
+    LDRB r2, [r2]
+    STRB r2, [r0]
+
+CL_SKIP_CLEAR_G3:
+	; ghost4 (if active)
+    LDR r0, ptr_ghost4_active
+    LDRB r4, [r0]
+    CMP r4, #1
+    BNE CL_SKIP_CLEAR_G4
+    LDR r0, ptr_ghost4_x
+    LDRB r4, [r0]
+    LDR r0, ptr_ghost4_y
+    LDRB r5, [r0]
+    MOV r0, #28
+    MUL r2, r5, r0
+    ADD r2, r2, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r2
+    LDR r2, ptr_ghost4_under
+    LDRB r2, [r2]
+    STRB r2, [r0]
+
+CL_SKIP_CLEAR_G4:
+	; write all entities back to their starting board positions
+    MOV r0, #28
+
+    ; pacman (14, 25)
+    MOV r1, #25
+    MUL r1, r1, r0
+    ADD r1, r1, #14
+    LDR r2, ptr_board
+    ADD r2, r2, r1
+    MOV r1, #4
+    STRB r1, [r2]
+
+    ; ghost1 (13, 12)
+    MOV r1, #12
+    MUL r1, r1, r0
+    ADD r1, r1, #13
+    LDR r2, ptr_board
+    ADD r2, r2, r1
+    MOV r1, #5
+    STRB r1, [r2]
+
+    ; ghost2 (13, 17)
+    MOV r1, #17
+    MUL r1, r1, r0
+    ADD r1, r1, #13
+    LDR r2, ptr_board
+    ADD r2, r2, r1
+    MOV r1, #6
+    STRB r1, [r2]
+
+    ; ghost3 (12, 15)
+    MOV r1, #15
+    MUL r1, r1, r0
+    ADD r1, r1, #12
+    LDR r2, ptr_board
+    ADD r2, r2, r1
+    MOV r1, #7
+    STRB r1, [r2]
+
+    ; ghost4 (15, 16)
+    MOV r1, #16
+    MUL r1, r1, r0
+    ADD r1, r1, #15
+    LDR r2, ptr_board
+    ADD r2, r2, r1
+    MOV r1, #8
+    STRB r1, [r2]
+
+    ; reset all ghost 1 globals
+    MOV r4, #13
+    MOV r5, #12
+    LDR r0, ptr_ghost1_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost1_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost1_old_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost1_old_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost1_new_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost1_new_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost1_under
+    MOV r1, #3
+    STRB r1, [r0]
+    LDR r0, ptr_ghost1_dir
+    MOV r1, #0
+    STRB r1, [r0]
+
+    ; reset all ghost 2 globals
+    MOV r4, #13
+    MOV r5, #17
+    LDR r0, ptr_ghost2_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost2_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost2_old_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost2_old_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost2_new_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost2_new_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost2_under
+    MOV r1, #3
+    STRB r1, [r0]
+    LDR r0, ptr_ghost2_dir
+    MOV r1, #0
+    STRB r1, [r0]
+    LDR r0, ptr_ghost2_active
+    MOV r1, #0
+    STRB r1, [r0]
+
+    ; reset all ghost 3 globals
+    MOV r4, #12
+    MOV r5, #15
+    LDR r0, ptr_ghost3_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost3_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost3_old_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost3_old_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost3_new_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost3_new_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost3_under
+    MOV r1, #3
+    STRB r1, [r0]
+    LDR r0, ptr_ghost3_dir
+    MOV r1, #0
+    STRB r1, [r0]
+    LDR r0, ptr_ghost3_active
+    MOV r1, #0
+    STRB r1, [r0]
+
+    ; reset all ghost 4 globals
+    MOV r4, #15
+    MOV r5, #16
+    LDR r0, ptr_ghost4_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost4_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost4_old_x
+	STRB r4, [r0]
+    LDR r0, ptr_ghost4_old_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost4_new_x
+    STRB r4, [r0]
+    LDR r0, ptr_ghost4_new_y
+    STRB r5, [r0]
+    LDR r0, ptr_ghost4_under
+    MOV r1, #3
+    STRB r1, [r0]
+    LDR r0, ptr_ghost4_dir
+    MOV r1, #0
+    STRB r1, [r0]
+    LDR r0, ptr_ghost4_active
+    MOV r1, #0
+    STRB r1, [r0]
+
+    ; reset pacman
+    MOV r4, #14
+    MOV r5, #25
+    LDR r0, ptr_pm_x
+    STRB r4, [r0]
+    LDR r0, ptr_pm_y
+    STRB r5, [r0]
+    LDR r0, ptr_old_x
+    STRB r4, [r0]
+    LDR r0, ptr_old_y
+    STRB r5, [r0]
+    LDR r0, ptr_new_x
+    STRB r4, [r0]
+    LDR r0, ptr_new_y
+    STRB r5, [r0]
+
+    ; full redraw bc paused on life lost so we have the time
+    LDR r0, ptr_ansi_home
+    BL output_string
+    BL print_board
+    BL print_score
+
+CL_DONE:
+
+	POP {r4-r11, lr}
 	MOV pc, lr
 
 
@@ -332,25 +869,87 @@ CHECK_GHOST_FLAG:
 update_ghost_tiles:
 	PUSH {r4-r5, lr}
 
-	; only blinky implemented so far
+	; all 4 ghosts now implemented
 
-	; update the old position to match whats in memory
+	; ghost 1, always active
 	LDR r0, ptr_ghost1_old_x
 	LDRB r4, [r0]
 	LDR r0, ptr_ghost1_old_y
 	LDRB r5, [r0]
 	MOV r0, r4
 	MOV r1, r5
-	BL draw_tile
-
-	; update the new position to match whats in memory
+	BL draw_tile				; draw old tile
 	LDR r0, ptr_ghost1_new_x
 	LDRB r4, [r0]
 	LDR r0, ptr_ghost1_new_y
 	LDRB r5, [r0]
 	MOV r0, r4
 	MOV r1, r5
-	BL draw_tile
+	BL draw_tile				; draw new tile
+
+	; ghost 2
+	LDR r0, ptr_ghost2_active
+	LDRB r4, [r0]
+	CMP r4, #1					; check if ghost 2 is active, skip if not
+	BNE UGT_SKIP_G2
+	LDR r0, ptr_ghost2_old_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost2_old_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile				; draw old tile
+	LDR r0, ptr_ghost2_new_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost2_new_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile				; draw new tile
+
+UGT_SKIP_G2:
+	; ghost 3
+	LDR r0, ptr_ghost3_active
+	LDRB r4, [r0]
+	CMP r4, #1					; check if ghost 3 is active, skip if not
+	BNE UGT_SKIP_G3
+	LDR r0, ptr_ghost3_old_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost3_old_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile				; draw old tile
+	LDR r0, ptr_ghost3_new_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost3_new_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile				; draw new tile
+
+UGT_SKIP_G3:
+	; ghost 4
+	LDR r0, ptr_ghost4_active
+	LDRB r4, [r0]
+	CMP r4, #1					; check if ghost 4 is active, skip if not
+	BNE UGT_SKIP_G4
+	LDR r0, ptr_ghost4_old_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost4_old_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile				; draw old tile
+	LDR r0, ptr_ghost4_new_x
+	LDRB r4, [r0]
+	LDR r0, ptr_ghost4_new_y
+	LDRB r5, [r0]
+	MOV r0, r4
+	MOV r1, r5
+	BL draw_tile				; draw new tile
+
+UGT_SKIP_G4:
 
 	POP {r4-r5, lr}
 	MOV pc, lr
@@ -527,13 +1126,10 @@ UART0_Handler:
 
 	CMP r0, #119		; ascii 'w'
 	BEQ SET_UP
-
 	CMP r0, #97			; ascii 'a'
 	BEQ SET_LEFT
-
 	CMP r0, #115		; ascii 's'
 	BEQ SET_DOWN
-
 	CMP r0, #100		; ascii 'd'
 	BEQ SET_RIGHT
 
@@ -544,17 +1140,14 @@ SET_UP:
 	MOV r6, #0
 	STRB r6, [r4]
 	B UART_HANDLER_END
-
 SET_LEFT:
 	MOV r6, #1
 	STRB r6, [r4]
 	B UART_HANDLER_END
-
 SET_DOWN:
 	MOV r6, #2
 	STRB r6, [r4]
 	B UART_HANDLER_END
-
 SET_RIGHT:
 	MOV r6, #3
 	STRB r6, [r4]
@@ -650,8 +1243,38 @@ Timer_Handler:
 	CMP r1, #1
 	BEQ MOVE_DONE
 
-	; move ghost
+	; move all active ghosts
+	MOV r0, #0		; blinky, always active
+	MOV r1, #5
 	BL move_ghost
+
+	LDR r0, ptr_ghost2_active	; check if pinky is active
+	LDRB r1, [r0]
+	CMP r1, #1
+	BNE SKIP_GHOST2_MOVE
+	MOV r0, #1		; pinky
+	MOV r1, #6
+	BL move_ghost
+
+SKIP_GHOST2_MOVE:
+	LDR r0, ptr_ghost3_active	; check if inky is active
+	LDRB r1, [r0]
+	CMP r1, #1
+	BNE SKIP_GHOST3_MOVE
+	MOV r0, #2		; inky
+	MOV r1, #7
+	BL move_ghost
+
+SKIP_GHOST3_MOVE:
+	LDR r0, ptr_ghost4_active	; check if clyde is active
+	LDRB r1, [r0]
+	CMP r1, #1
+	BNE SKIP_GHOST4_MOVE
+	MOV r0, #3		; clyde
+	MOV r1, #8
+	BL move_ghost
+
+SKIP_GHOST4_MOVE:
 
 	; load current position and direction
 	LDR r0, ptr_pm_x
@@ -679,15 +1302,12 @@ Timer_Handler:
 MOVE_UP:
 	SUB r5, r5, #1	; y--
 	B CHECK_MOVE
-
 MOVE_LEFT:
 	SUB r4, r4, #1	; x--
 	B CHECK_MOVE
-
 MOVE_DOWN:
 	ADD r5, r5, #1	; y++
 	B CHECK_MOVE
-
 MOVE_RIGHT:
 	ADD r4, r4, #1	; x++
 
@@ -781,6 +1401,46 @@ PM_CHECK_Y:
 	ADD r1, r1, #10
 	STR r1, [r0]
 
+	; increment pellets eaten
+	LDR r0, ptr_pellets_eaten
+	LDRB r1, [r0]
+	ADD r1, r1, #1
+	STRB r1, [r0]
+
+	; pinky should exit at 30 pellets eaten
+	CMP r1, #30
+	BLT CHECK_INKY_THRESHOLD
+	LDR r0, ptr_ghost2_active
+	LDRB r2, [r0]
+	CMP r2, #1
+	BEQ CHECK_INKY_THRESHOLD
+	BL activate_ghost2
+
+CHECK_INKY_THRESHOLD:
+	; inky should exit at 60 pellets eaten
+	LDR r0, ptr_pellets_eaten
+	LDRB r1, [r0]
+	CMP r1, #60
+	BLT CHECK_CLYDE_THRESHOLD
+	LDR r0, ptr_ghost3_active
+	LDRB r2, [r0]
+	CMP r2, #1
+	BEQ CHECK_CLYDE_THRESHOLD
+	BL activate_ghost3
+
+CHECK_CLYDE_THRESHOLD:
+	; clyde should exit at 90 pellets eaten
+	LDR r0, ptr_pellets_eaten
+	LDRB r1, [r0]
+	CMP r1, #90
+	BLT PELLET_DONE
+	LDR r0, ptr_ghost4_active
+	LDRB r2, [r0]
+	CMP r2, #1
+	BEQ PELLET_DONE
+	BL activate_ghost4
+
+PELLET_DONE:
 	; signal score update
 	LDR r0, ptr_score_flag
 	MOV r1, #1
@@ -792,225 +1452,419 @@ MOVE_DONE:
 	BX lr       	; Return
 
 
-; ============
-;  MOVE GHOST
-; ============
-move_ghost:
-	PUSH {r4-r11, lr}
+; ==========================
+;  ACTIVATE GHOST 2 - PINKY
+; ==========================
+activate_ghost2:
+	PUSH {r4-r5, lr}
 
-	; generate pseudo random number
-	BL xorshift			; r0 = random
-	MOV r4, r0
+	; move ghost 2 to above ghost door, row 11 col 12
 
-	; load ghost pos and dir
-	LDR r0, ptr_ghost1_x
-	LDRB r5, [r0]
-	LDR r0, ptr_ghost1_y
-	LDRB r6, [r0]
-	LDR r0, ptr_ghost1_dir
-	LDRB r7, [r0]
-
-	; get reverse direction, dir + 2 (2 bit unsigned addition, so & 3)
-	ADD r8, r7, #2
-	AND r8, r8, #3		; r8 = reverse dir
-
-	; valid direction scan start
-	LDR r9, ptr_ghost_valid_dirs
-	MOV r10, #0		; r10 = valid count
-	MOV r11, #0		; r11 = direction iterator
-
-GHOST_SCAN:
-	CMP r11, #4		; max potential directions is 3
-	BGE GHOST_SCAN_DONE
-
-	CMP r11, r8		; ghosts cannot reverse
-	BEQ GHOST_SCAN_NEXT
-
-	; compute potential next position
-	MOV r1, r5			; r1 = potential x
-	MOV r2, r6			; r2 = potential y
-
-	CMP r11, #0
-	BEQ GHOST_SCAN_UP
-	CMP r11, #1
-	BEQ GHOST_SCAN_LEFT
-	CMP r11, #2
-	BEQ GHOST_SCAN_DOWN
-	CMP r11, #3
-	BEQ GHOST_SCAN_RIGHT
-
-GHOST_SCAN_UP:
-	SUB r2, r2, #1	; up: y--
-	B GHOST_SCAN_DIR_END
-GHOST_SCAN_LEFT:
-	SUB r1, r1, #1	; left: x--
-	B GHOST_SCAN_DIR_END
-GHOST_SCAN_DOWN:
-	ADD r2, r2, #1	; down: y++
-	B GHOST_SCAN_DIR_END
-GHOST_SCAN_RIGHT:
-	ADD r1, r1, #1	; right: x++
-
-GHOST_SCAN_DIR_END:
-	; x < 0, wrap around to x = 27 on y = 16
-	CMP r1, #0
-	BGE GHOST_CHECK_X_MAX
-	CMP r2, #16
-	BNE GHOST_SCAN_NEXT
-	MOV r1, #27
-	B GHOST_CHECK_Y
-
-GHOST_CHECK_X_MAX:
-	; x > 27, wrap around to x = 0 on y = 16
-	CMP r1, #27
-	BLE GHOST_CHECK_Y
-	CMP r2, #16
-	BNE GHOST_SCAN_NEXT
-	MOV r1, #0
-
-GHOST_CHECK_Y:
-	; y bounds check, should never happen
-	CMP r2, #0
-	BLT GHOST_SCAN_NEXT
-	CMP r2, #32
-	BGT GHOST_SCAN_NEXT
-
-	; check tile at potential position
+	; clear old position on board
 	MOV r0, #28
-	MUL r3, r2, r0
-	ADD r3, r3, r1		; tile in memory = (y*28)+x
+	MOV r1, #17
+	MUL r1, r1, r0
+	ADD r1, r1, #13
 	LDR r0, ptr_board
-	ADD r0, r0, r3
-	LDRB r0, [r0]
+	ADD r0, r0, r1
+	MOV r1, #3
+	STRB r1, [r0]
 
-	CMP r0, #0		; wall ?
-	BEQ GHOST_SCAN_NEXT
-	CMP r0, #9		; door ?
-	BEQ GHOST_SCAN_NEXT
-
-	; tile is valid, store it
-	STRB r11, [r9, r10]
-	ADD r10, r10, #1	; increment valid count
-
-GHOST_SCAN_NEXT:
-	ADD r11, r11, #1	; increment direction iterator
-	B GHOST_SCAN
-
-GHOST_SCAN_DONE:
-	CMP r10, #0			; no valid directions (shouldnt ever happen)
-	BEQ MOVE_GHOST_END
-
-	; if only one direction, skip random
-	CMP r10, #1
-	BEQ GHOST_ONE_DIR
-
-	AND r1, r4, #0xFF	; dividend = lower 8 bits of random
-	MOV r0, r10			; divisor = valid valid directions count
-	BL mod		; r0 = choice
-	B GHOST_PICK_DIR
-
-GHOST_ONE_DIR:
-	MOV r0, #0
-
-GHOST_PICK_DIR:
-	LDRB r7, [r9, r0]	; r7 = chosen direction
-
-	; calculate new position
-	MOV r1, r5		; x
-	MOV r2, r6		; y
-
-	CMP r7, #0
-	BEQ GHOST_PICK_DIR_UP
-	CMP r7, #1
-	BEQ GHOST_PICK_DIR_LEFT
-	CMP r7, #2
-	BEQ GHOST_PICK_DIR_DOWN
-	CMP r7, #3
-	BEQ GHOST_PICK_DIR_RIGHT
-
-GHOST_PICK_DIR_UP:
-	SUB r2, r2, #1	; up: y--
-	B GHOST_PICK_DIR_WRAP
-GHOST_PICK_DIR_LEFT:
-	SUB r1, r1, #1	; left: x--
-	B GHOST_PICK_DIR_WRAP
-GHOST_PICK_DIR_DOWN:
-	ADD r2, r2, #1	; down: y++
-	B GHOST_PICK_DIR_WRAP
-GHOST_PICK_DIR_RIGHT:
-	ADD r1, r1, #1	; right: x++
-
-GHOST_PICK_DIR_WRAP:
-	; x < 0, wrap around to x = 27 on y = 16
-	CMP r1, #0
-	BGE GHOST_PICK_CHECK_X_MAX
-	CMP r2, #16
-	BNE GHOST_PICK_DIR_DONE
-	MOV r1, #27
-	B GHOST_PICK_DIR_DONE
-
-GHOST_PICK_CHECK_X_MAX:
-	; x > 27, wrap around to x = 0 on y = 16
-	CMP r1, #27
-	BLE GHOST_PICK_DIR_DONE
-	CMP r2, #16
-	BNE GHOST_PICK_DIR_DONE
-	MOV r1, #0
-
-GHOST_PICK_DIR_DONE:
-
-	; save the old position
-	LDR r0, ptr_ghost1_old_x
+	; set ghost 2 position to exit position
+	MOV r4, #12
+	MOV r5, #11
+	LDR r0, ptr_ghost2_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost2_y
 	STRB r5, [r0]
-	LDR r0, ptr_ghost1_old_y
-	STRB r6, [r0]
+	LDR r0, ptr_ghost2_old_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost2_old_y
+	STRB r5, [r0]
+	LDR r0, ptr_ghost2_new_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost2_new_y
+	STRB r5, [r0]
 
-	; clear the old tile
-	MOV r0, #28
-	MUL r3, r6, r0
-	ADD r3, r3, r5		; tile in memory = (y*28)+x
-	LDR r0, ptr_board
-	ADD r0, r0, r3
-	LDR r8, ptr_ghost1_under
-	LDRB r8, [r8]		; load the saved tile
-	STRB r8, [r0]		; restore the saved tile
-
-	; update ghost position and direction
-	LDR r0, ptr_ghost1_x
+	; set under ghost to empty path
+	LDR r0, ptr_ghost2_under
+	MOV r1, #3
 	STRB r1, [r0]
-	LDR r0, ptr_ghost1_y
-	STRB r2, [r0]
-	LDR r0, ptr_ghost1_dir
-	STRB r7, [r0]
 
-	; save new position
-	LDR r0, ptr_ghost1_new_x
-	STRB r1, [r0]
-	LDR r0, ptr_ghost1_new_y
-	STRB r2, [r0]
-
-	; save tile at new position before overwriting
+	; write pinky tile to exit position
 	MOV r0, #28
-	MUL r3, r2, r0
-	ADD r3, r3, r1		; tile in memory = (y*28)+x
+	MOV r1, #11
+	MUL r1, r1, r0
+	ADD r1, r1, #12
 	LDR r0, ptr_board
-	ADD r0, r0, r3
-	LDRB r8, [r0]
-	LDR r10, ptr_ghost1_under
-	STRB r8, [r10]		; save whats under blinky
+	ADD r0, r0, r1
+	MOV r1, #6
+	STRB r1, [r0]
 
-	; write blinky to new position
-	MOV r3, #5			; 5 = blinky
-	STRB r3, [r0]
+	; mark pinky as active
+	LDR r0, ptr_ghost2_active
+	MOV r1, #1
+	STRB r1, [r0]
 
-	; signal ghost redraw
+	; signal redraw
 	LDR r0, ptr_ghost_redraw_flag
 	MOV r1, #1
 	STRB r1, [r0]
 
-MOVE_GHOST_END:
+	POP {r4-r5, lr}
+	MOV pc, lr
 
-	POP {r4-r11, lr}
+
+; =========================
+;  ACTIVATE GHOST 3 - INKY
+; =========================
+activate_ghost3:
+	PUSH {r4-r5, lr}
+
+	; move ghost 3 to above ghost door, row 11 col 12
+
+	; clear old position on board
+	MOV r0, #28
+	MOV r1, #15
+	MUL r1, r1, r0
+	ADD r1, r1, #12
+	LDR r0, ptr_board
+	ADD r0, r0, r1
+	MOV r1, #3
+	STRB r1, [r0]
+
+	; set ghost 3 position to exit position
+	MOV r4, #12
+	MOV r5, #11
+	LDR r0, ptr_ghost3_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost3_y
+	STRB r5, [r0]
+	LDR r0, ptr_ghost3_old_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost3_old_y
+	STRB r5, [r0]
+	LDR r0, ptr_ghost3_new_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost3_new_y
+	STRB r5, [r0]
+
+	; set under ghost to empty path
+	LDR r0, ptr_ghost3_under
+	MOV r1, #3
+	STRB r1, [r0]
+
+	; write inky tile to exit position
+	MOV r0, #28
+	MOV r1, #11
+	MUL r1, r1, r0
+	ADD r1, r1, #12
+	LDR r0, ptr_board
+	ADD r0, r0, r1
+	MOV r1, #7
+	STRB r1, [r0]
+
+	; mark inky as active
+	LDR r0, ptr_ghost3_active
+	MOV r1, #1
+	STRB r1, [r0]
+
+	; signal redraw
+	LDR r0, ptr_ghost_redraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
+	POP {r4-r5, lr}
+	MOV pc, lr
+
+
+; ==========================
+;  ACTIVATE GHOST 4 - CLYDE
+; ==========================
+activate_ghost4:
+	PUSH {r4-r5, lr}
+
+	; move ghost 4 to above ghost door, row 11 col 12
+
+	; clear old position on board
+	MOV r0, #28
+	MOV r1, #16
+	MUL r1, r1, r0
+	ADD r1, r1, #15
+	LDR r0, ptr_board
+	ADD r0, r0, r1
+	MOV r1, #3
+	STRB r1, [r0]
+
+	; set ghost 2 position to exit position
+	MOV r4, #12
+	MOV r5, #11
+	LDR r0, ptr_ghost4_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost4_y
+	STRB r5, [r0]
+	LDR r0, ptr_ghost4_old_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost4_old_y
+	STRB r5, [r0]
+	LDR r0, ptr_ghost4_new_x
+	STRB r4, [r0]
+	LDR r0, ptr_ghost4_new_y
+	STRB r5, [r0]
+
+	; set under ghost to empty path
+	LDR r0, ptr_ghost4_under
+	MOV r1, #3
+	STRB r1, [r0]
+
+	; write pinky tile to exit position
+	MOV r0, #28
+	MOV r1, #11
+	MUL r1, r1, r0
+	ADD r1, r1, #12
+	LDR r0, ptr_board
+	ADD r0, r0, r1
+	MOV r1, #8
+	STRB r1, [r0]
+
+	; mark pinky as active
+	LDR r0, ptr_ghost4_active
+	MOV r1, #1
+	STRB r1, [r0]
+
+	; signal redraw
+	LDR r0, ptr_ghost_redraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
+	POP {r4-r5, lr}
+	MOV pc, lr
+
+
+; ============
+;  MOVE GHOST
+; ============
+move_ghost:
+	PUSH {r4-r12, lr}
+
+	; r0 = ghost index (0-3)
+	; r1 = tile value (5-8)
+
+	MOV r12, r1		; save tile value for later
+
+	; calculate ghost table entry base and push it to the stack
+	LSL r2, r0, #5		; index * 32
+	LDR r3, ptr_ghost_table
+	ADD r2, r2, r3
+	PUSH {r2}		; sp contains ghost table entry base address
+
+	; generate prng
+	BL xorshift
+	MOV r4, r0		; r4 = random number
+
+	; load ghost state from the table
+	LDR r2, [sp]
+	LDR r0, [r2, #0]		; ptr x
+	LDRB r5, [r0]			; r5 = ghost x
+	LDR r0, [r2, #4]		; ptr y
+	LDRB r6, [r0]			; r6 = ghost y
+	LDR r0, [r2, #8]		; ptr dir
+	LDRB r7, [r0]			; r7 = ghost dir
+
+	; r2 is now free
+
+	ADD r8, r7, #2
+	AND r8, r8, #3			; r8 = reverse dir
+
+	LDR r9, ptr_ghost_valid_dirs
+	MOV r10, #0		; valid cound
+	MOV r11, #0		; direction iterator
+
+MG_SCAN:
+	CMP r11, #4
+	BGE MG_SCAN_DONE
+	CMP r11, r8
+	BEQ MG_SCAN_NEXT
+
+	MOV r0, r5		; potential dir x
+	MOV r1, r6		; y
+
+	; check direction
+	CMP r11, #0
+	BEQ MG_SCAN_UP
+	CMP r11, #1
+	BEQ MG_SCAN_LEFT
+	CMP r11, #2
+	BEQ MG_SCAN_DOWN
+	CMP r11, #3
+	BEQ MG_SCAN_RIGHT
+
+MG_SCAN_UP:
+	SUB r1, r1, #1
+	B MG_SCAN_BOUNDS
+MG_SCAN_LEFT:
+	SUB r0, r0, #1
+	B MG_SCAN_BOUNDS
+MG_SCAN_DOWN:
+	ADD r1, r1, #1
+	B MG_SCAN_BOUNDS
+MG_SCAN_RIGHT:
+	ADD r0, r0, #1
+
+; check bounds and wrap around
+MG_SCAN_BOUNDS:
+	CMP r0, #0
+	BGE MG_SCAN_CHECK_XMAX
+	CMP r1, #16
+	BNE MG_SCAN_NEXT
+	MOV r0, #27
+	B MG_SCAN_CHECK_Y
+MG_SCAN_CHECK_XMAX:
+	CMP r0, #27
+	BLE MG_SCAN_CHECK_Y
+	CMP r1, #16
+	BNE MG_SCAN_NEXT
+	MOV r0, #0
+MG_SCAN_CHECK_Y:
+	CMP r1, #0
+	BLT MG_SCAN_NEXT
+	CMP r1, #32
+	BGT MG_SCAN_NEXT
+
+	; check tile
+	MOV r2, #28
+	MUL r2, r1, r2
+	ADD r2, r2, r0
+	LDR r3, ptr_board
+	ADD r3, r3, r2
+	LDRB r3, [r3]
+
+	; check for wall and door
+	CMP r3, #0
+	BEQ MG_SCAN_NEXT
+	CMP r3, #9
+	BEQ MG_SCAN_NEXT
+
+	; store in valid dirs
+	STRB r11, [r9, r10]
+	ADD r10, r10, #1	; increment valid count
+
+MG_SCAN_NEXT:
+	ADD r11, r11, #1	; increment direction iterator
+	B MG_SCAN
+
+MG_SCAN_DONE:
+	CMP r10, #0			; no valid dirctions (how?)
+	BEQ MG_MOVE_END
+	CMP r10, #1			; only one valid direction
+	BEQ MG_ONE_DIR
+
+	AND r1, r4, #0xFF	; dividend = lower 8 bits of random
+	MOV r0, r10			; divisor = valid directions count
+	BL mod				; r0 = choice
+	B MG_PICK_DIR
+
+MG_ONE_DIR:
+	MOV r0, #0
+
+MG_PICK_DIR:
+	LDRB r7, [r9, r0]		; chosen direction
+
+	MOV r0, r5	; x
+	MOV r1, r6	; y
+
+	; check what direction was chosen
+	CMP r7, #0
+	BEQ MG_PICK_UP
+	CMP r7, #1
+	BEQ MG_PICK_LEFT
+	CMP r7, #2
+	BEQ MG_PICK_DOWN
+	CMP r7, #3
+	BEQ MG_PICK_RIGHT
+
+MG_PICK_UP:
+	SUB r1, r1, #1
+	B MG_PICK_WRAP
+MG_PICK_LEFT:
+	SUB r0, r0, #1
+	B MG_PICK_WRAP
+MG_PICK_DOWN:
+	ADD r1, r1, #1
+	B MG_PICK_WRAP
+MG_PICK_RIGHT:
+	ADD r0, r0, #1
+
+MG_PICK_WRAP:
+	CMP r0, #0
+	BGE MG_PICK_CHECK_XMAX
+	CMP r1, #16
+	BNE MG_PICK_DONE
+	MOV r0, #27
+	B MG_PICK_DONE
+MG_PICK_CHECK_XMAX:
+	CMP r0, #27
+	BLE MG_PICK_DONE
+	CMP r1, #16
+	BNE MG_PICK_DONE
+	MOV r0, #0
+
+MG_PICK_DONE:
+	; r0 = new_x, r1 = new_y, r5 = old_x, r6 = old_y, r7 = new_dir, r12 = tile
+	LDR r2, [sp]	; reload table from stack
+
+	; save old position
+	LDR r3, [r2, #12]
+	STRB r5, [r3]		; old x
+	LDR r3, [r2, #16]
+	STRB r6, [r3]		; old y
+
+	; restore tile at old position
+	LDR r3, [r2, #28]		; ptr under
+	LDRB r8, [r3]			; tile under value
+	MOV r4, #28
+	MUL r9, r6, r4
+	ADD r9, r9, r5
+	LDR r4, ptr_board
+	ADD r4, r4, r9
+	STRB r8, [r4]			; restore tile underneath
+
+	; update ghost position and direction
+	LDR r3, [r2, #0]
+	STRB r0, [r3]		; ghost x = new x
+	LDR r3, [r2, #4]
+	STRB r1, [r3]		; ghost y = new y
+	LDR r3, [r2, #8]
+	STRB r7, [r3]		; ghost dir
+
+	; save new position
+	LDR r3, [r2, #20]
+	STRB r0, [r3]		; new x
+	LDR r3, [r2, #24]
+	STRB r1, [r3]		; new y
+
+	; save tile under ghost at new pos
+	MOV r4, #28
+	MUL r9, r1, r4
+	ADD r9, r9, r0
+	LDR r4, ptr_board
+	ADD r4, r4, r9
+	LDRB r8, [r4]		; tile at new pos
+	LDR r3, [r2, #28]	; ptr under
+	STRB r8, [r3]
+
+	; write ghost tile
+	STRB r12, [r4]
+
+	; signal redraw
+	LDR r0, ptr_ghost_redraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
+MG_MOVE_END:
+	ADD sp, sp, #4		; pop table entry from stack
+
+	POP {r4-r12, lr}
 	MOV pc, lr
 
 

@@ -72,12 +72,12 @@
 ;  ANSI STRINGS
 ; ==============
 ansi_black:		.string 27, "[37;40m", 0		; foreground white, background black
-ansi_blue:		.string 27, "[37;44m", 0		; foreground white, background blue
-ansi_pacman:	.string 27, "[33;44m", 0		; foreground yellow, background blue
-ansi_blinky:	.string 27, "[31m", 0			; foreground red
-ansi_pinky:		.string 27, "[35m", 0			; foreground magenta
-ansi_inky:		.string 27, "[36m", 0			; foreground cyan
-ansi_clyde:		.string 27, "[38;5;208m", 0		; foreground orange
+ansi_blue:		.string 27, "[37;48;5;68m", 0		; foreground white, background blue
+ansi_pacman:	.string 27, "[38;5;226;48;5;68m", 0		; foreground yellow, background blue
+ansi_blinky:	.string 27, "[31;48;5;68m", 0		; foreground red, background blue
+ansi_pinky:		.string 27, "[35;48;5;68m", 0		; foreground magenta, background blue
+ansi_inky:		.string 27, "[36;48;5;68m", 0		; foreground cyan, background blue
+ansi_clyde:		.string 27, "[38;5;208;48;5;68m", 0	; foreground orange, background blue
 ansi_door:		.string 27, "[106m",0			; background bright cyan
 remove_cursor:	.string 27, "[?25l", 0			; makes the cursor not visible
 ansi_home:		.string 27, "[H", 0				; moves cursor to top left
@@ -329,14 +329,12 @@ ptr_ghost_table:		.word ghost_table
 ;		- not sure what to do about this or how to make it different each time
 ;		- the xorshift start value cannot be hardcoded for true random every game run
 ;		- maybe involve the score with the xorshift input ? or maybe time somehow ?
+;	- issues with ghosts movement
+;		- when two ghosts intersect, an 'A' is sometimes left at the collision tile
+;		- after losing a life, if multiple ghosts reenter the game, they are on the same path and leave behind a trail of 'A's
 ;
 ; next to do:
-;	- keep working on ghost movement
-;		- implement movement for the other three ghosts
-;		- how do the rest of the ghosts leave their home ? preset movement path ?
-;		- when do the other three ghosts leave their home ? based on pellets collected i think is good
 ;	- lose life logic
-;		- when pacman and a ghost collide, lose life and turn off one led
 ;		- game over logic
 ;	- powerup pellet logic
 ;		- lasts 15 (?) seconds

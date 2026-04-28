@@ -1206,11 +1206,19 @@ DISABLE_TIMER:
 	B SWITCH_HANDLER_END
 
 ENABLE_TIMER:
-	MOV r7, #1	; set state to normal
+	;MOV r7, #1	; set state to normal
 				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
 				; needs to be changed to remember state before the game was paused (powerup)
 				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	STRB r7, [r6]
+	;STRB r7, [r6]
+	LDR r0, ptr_state_save
+	LDRB r7, [r0]
+	STRB r7,[r6]
+
+	LDR r5, [r4, #0x00C]
+	ORR r5, r5, #1
+	STR r5, [r4, #0x00C]
+
 
 	LDR r5, [r4, #0x00C]
 	ORR r5, r5, #1
@@ -1270,10 +1278,11 @@ Timer_Handler:
 	CMP r1,#0
 	BEQ POWERUP_DONE
 
-	;10 seconds=blue, 5 seconds= blinkin red
+
+	; 10 seconds = blue, 5 seconds = blinking red
 	CMP r1, #20
 	BGT PU_BLUE
-	;blinking red
+	; blinking red
 	AND r2, r1, #1
 	CMP r2, #0
 	BEQ PU_RED
@@ -1294,11 +1303,11 @@ POWERUP_DONE:
 	LDR r0, ptr_state
 	MOV r1, #1
 	STRB r1, [r0]
-	;clear tiner
+	; clear tiner
 	LDR r0, ptr_powerup_timer
 	MOV r1,#0
 	STR r1, [r0]
-	;led off
+	; led off
 	MOV r0,#48
 	BL illuminate_RGB_LED
 
@@ -1446,7 +1455,6 @@ PM_CHECK_Y:
 	STRB r0, [r8]
 
 	; signal redraw instead of drawing inside of interrupt
-	; kept entering FaultISR infinite loop, nested BL calls was the problem me thinks idk tho
 	LDR r0, ptr_redraw_flag
 	MOV r1, #1
 	STRB r1, [r0]
@@ -1509,6 +1517,7 @@ PELLET_DONE:
 	LDR r0, ptr_score_flag
 	MOV r1, #1
 	STRB r1, [r0]
+	B MOVE_DONE
 
 PU_PELLET:
 	LDR r0, ptr_state
@@ -1518,7 +1527,12 @@ PU_PELLET:
 	LDR r0, ptr_powerup_timer
 	MOV r1, #60
 	STR r1, [r0]
-	;led to blue
+	; increment pellets for powerups
+	LDR r0, ptr_pellets_eaten
+	LDRB r1,[r0]
+	ADD r1,r1, #1
+	STRB r1,[r0]
+	; led to blue
 	MOV r0,#51
 	BL illuminate_RGB_LED
 

@@ -66,6 +66,8 @@
 	.global ghost4_under
 	.global ghost4_active
 	.global pellets_eaten
+	.global powerup_timer
+	.global state_save
 
 
 ; ==============
@@ -215,6 +217,8 @@ ghost4_new_x:		.byte 0
 ghost4_new_y:		.byte 0
 ghost4_under:		.byte 3
 ghost4_active:		.byte 0
+powerup_timer:		.word 0x0
+state_save:			.byte 1
 
 	.text
 
@@ -308,6 +312,8 @@ ptr_ghost4_new_x:		.word ghost4_new_x
 ptr_ghost4_new_y:		.word ghost4_new_y
 ptr_ghost4_under:		.word ghost4_under
 ptr_ghost4_active:		.word ghost4_active
+ptr_powerup_timer:		.word powerup_timer
+ptr_state_save:			.word state_save
 
 ghost_table:
 	.word ghost1_x, ghost1_y, ghost1_dir, ghost1_old_x, ghost1_old_y, ghost1_new_x, ghost1_new_y, ghost1_under
@@ -849,6 +855,11 @@ CL_SKIP_CLEAR_G4:
     LDR r0, ptr_new_y
     STRB r5, [r0]
 
+    ; reset pellets counter, yes ik thats not how the game is supposed to work but we're running out of time
+    LDR r0, ptr_pellets_eaten
+    MOV r1, #0
+    STRB r1, [r0]
+
     ; full redraw bc paused on life lost so we have the time
     LDR r0, ptr_ansi_home
     BL output_string
@@ -1241,6 +1252,57 @@ Timer_Handler:
 	CMP r1, #1
 	BEQ MOVE_DONE
 
+	; ---------
+	; powerup timer
+	; ---------
+	LDR r0, ptr_state
+	LDRB r1, [r0]
+	CMP r1,#2
+	BNE CONTINUE
+
+	LDR r0, ptr_powerup_timer
+	LDR r1, [r0]
+	CMP r1,#0
+	BEQ POWERUP_DONE
+
+	SUB r1,r1, #1
+	STR r1, [r0]
+	CMP r1,#0
+	BEQ POWERUP_DONE
+
+	;10 seconds=blue, 5 seconds= blinkin red
+	CMP r1, #20
+	BGT PU_BLUE
+	;blinking red
+	AND r2, r1, #1
+	CMP r2, #0
+	BEQ PU_RED
+	MOV r0, #48
+	BL illuminate_RGB_LED
+	B CONTINUE
+
+PU_RED:
+	MOV r0, #49
+	BL illuminate_RGB_LED
+	B CONTINUE
+PU_BLUE:
+	MOV r0, #51
+	BL illuminate_RGB_LED
+	B CONTINUE
+
+POWERUP_DONE:
+	LDR r0, ptr_state
+	MOV r1, #1
+	STRB r1, [r0]
+	;clear tiner
+	LDR r0, ptr_powerup_timer
+	MOV r1,#0
+	STR r1, [r0]
+	;led off
+	MOV r0,#48
+	BL illuminate_RGB_LED
+
+CONTINUE:
 	; move all active ghosts
 	MOV r0, #0		; blinky, always active
 	MOV r1, #5
@@ -1391,8 +1453,12 @@ PM_CHECK_Y:
 
 	; pellet check
 	CMP r9, #1
-	BNE MOVE_DONE
+	BEQ PELLET_CONT
+	CMP r9, #2
+	BEQ PU_PELLET
+	B MOVE_DONE
 
+PELLET_CONT:
 	; add 10 to score
 	LDR r0, ptr_score
 	LDR r1, [r0]
@@ -1444,6 +1510,18 @@ PELLET_DONE:
 	MOV r1, #1
 	STRB r1, [r0]
 
+PU_PELLET:
+	LDR r0, ptr_state
+	MOV r1,#2
+	STRB r1, [r0]
+
+	LDR r0, ptr_powerup_timer
+	MOV r1, #60
+	STR r1, [r0]
+	;led to blue
+	MOV r0,#51
+	BL illuminate_RGB_LED
+
 MOVE_DONE:
 
 	POP {r4-r12,lr}  	; Restore registers from stack
@@ -1476,9 +1554,11 @@ activate_ghost2:
 	LDR r0, ptr_ghost2_y
 	STRB r5, [r0]
 	LDR r0, ptr_ghost2_old_x
-	STRB r4, [r0]
+	MOV r1, #13
+	STRB r1, [r0]
 	LDR r0, ptr_ghost2_old_y
-	STRB r5, [r0]
+	MOV r1, #17
+	STRB r1, [r0]
 	LDR r0, ptr_ghost2_new_x
 	STRB r4, [r0]
 	LDR r0, ptr_ghost2_new_y
@@ -1539,9 +1619,11 @@ activate_ghost3:
 	LDR r0, ptr_ghost3_y
 	STRB r5, [r0]
 	LDR r0, ptr_ghost3_old_x
-	STRB r4, [r0]
+	MOV r1, #12
+	STRB r1, [r0]
 	LDR r0, ptr_ghost3_old_y
-	STRB r5, [r0]
+	MOV r1, #15
+	STRB r1, [r0]
 	LDR r0, ptr_ghost3_new_x
 	STRB r4, [r0]
 	LDR r0, ptr_ghost3_new_y
@@ -1602,9 +1684,11 @@ activate_ghost4:
 	LDR r0, ptr_ghost4_y
 	STRB r5, [r0]
 	LDR r0, ptr_ghost4_old_x
-	STRB r4, [r0]
+	MOV r1, #15
+	STRB r1, [r0]
 	LDR r0, ptr_ghost4_old_y
-	STRB r5, [r0]
+	MOV r1, #16
+	STRB r1, [r0]
 	LDR r0, ptr_ghost4_new_x
 	STRB r4, [r0]
 	LDR r0, ptr_ghost4_new_y
@@ -1675,7 +1759,7 @@ move_ghost:
 	AND r8, r8, #3			; r8 = reverse dir
 
 	LDR r9, ptr_ghost_valid_dirs
-	MOV r10, #0		; valid cound
+	MOV r10, #0		; valid count
 	MOV r11, #0		; direction iterator
 
 MG_SCAN:
@@ -1848,6 +1932,12 @@ MG_PICK_DONE:
 	LDR r4, ptr_board
 	ADD r4, r4, r9
 	LDRB r8, [r4]		; tile at new pos
+	CMP r8, #5			; dont save other ghosts underneath
+	BLT MG_SAVE_UNDER
+	CMP r8, #8
+	BGT MG_SAVE_UNDER
+	MOV r8, #3
+MG_SAVE_UNDER:
 	LDR r3, [r2, #28]	; ptr under
 	STRB r8, [r3]
 

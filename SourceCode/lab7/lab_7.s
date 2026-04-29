@@ -76,6 +76,7 @@
 	.global prompt_play_again
 	.global prompt_quit
 	.global prompt_level_clear
+	.global fredraw_flag
 
 
 ; ==============
@@ -265,10 +266,12 @@ powerup_timer:		.word 0x0
 state_save:			.byte 1
 pellets_total:		.byte 0
 level_flag:			.byte 0
+fredraw_flag:		.byte 0
+level:				.byte 0
 
 prompt_game_over:	.string "    GAME  OVER    ", 0
 prompt_play_again:	.string "  P = PLAY AGAIN  ", 0
-prompt_qut:			.string "  Q = QUIT        ", 0
+prompt_quit:			.string "  Q = QUIT        ", 0
 prompt_level_clear:	.string "   LEVEL  CLEAR   ", 0
 
 	.text
@@ -297,86 +300,14 @@ prompt_level_clear:	.string "   LEVEL  CLEAR   ", 0
 ; ==========
 ;  POINTERS
 ; ==========
-ptr_prompt:				.word prompt
-ptr_lookup_color:		.word lookup_color
-ptr_lookup_char:		.word lookup_char
-ptr_board:				.word board
-ptr_lives:				.word lives
-ptr_pm_x:				.word pm_x
-ptr_pm_y:				.word pm_y
-ptr_score:				.word score
-ptr_dir:				.word dir
-ptr_pause:				.word pause
-ptr_state:				.word state
-ptr_cursor_row:			.word cursor_row
-ptr_cursor_col:			.word cursor_col
-ptr_redraw_flag:		.word redraw_flag
-ptr_old_x:				.word old_x
-ptr_old_y:				.word old_y
-ptr_new_x:				.word new_x
-ptr_new_y:				.word new_y
-ptr_remove_cursor:		.word remove_cursor
-ptr_ansi_home:			.word ansi_home
-ptr_ansi_clear:			.word ansi_clear
-ptr_ansi_black:			.word ansi_black
-ptr_score_flag:			.word score_flag
-ptr_score_string:		.word score_string
-ptr_ghost1_x:			.word ghost1_x
-ptr_ghost1_y:			.word ghost1_y
-ptr_ghost1_dir:			.word ghost1_dir
-ptr_ghost1_old_x:		.word ghost1_old_x
-ptr_ghost1_old_y:		.word ghost1_old_y
-ptr_ghost1_new_x:		.word ghost1_new_x
-ptr_ghost1_new_y:		.word ghost1_new_y
-ptr_ghost_redraw_flag:	.word ghost_redraw_flag
-ptr_ghost_valid_dirs:	.word ghost_valid_dirs
-ptr_xor_in:				.word xor_in
-ptr_ghost1_under:		.word ghost1_under
-ptr_pellets_eaten:		.word pellets_eaten
-ptr_ghost2_x:			.word ghost2_x
-ptr_ghost2_y:			.word ghost2_y
-ptr_ghost2_dir:			.word ghost2_dir
-ptr_ghost2_old_x:		.word ghost2_old_x
-ptr_ghost2_old_y:		.word ghost2_old_y
-ptr_ghost2_new_x:		.word ghost2_new_x
-ptr_ghost2_new_y:		.word ghost2_new_y
-ptr_ghost2_under:		.word ghost2_under
-ptr_ghost2_active:		.word ghost2_active
-ptr_ghost3_x:			.word ghost3_x
-ptr_ghost3_y:			.word ghost3_y
-ptr_ghost3_dir:			.word ghost3_dir
-ptr_ghost3_old_x:		.word ghost3_old_x
-ptr_ghost3_old_y:		.word ghost3_old_y
-ptr_ghost3_new_x:		.word ghost3_new_x
-ptr_ghost3_new_y:		.word ghost3_new_y
-ptr_ghost3_under:		.word ghost3_under
-ptr_ghost3_active:		.word ghost3_active
-ptr_ghost4_x:			.word ghost4_x
-ptr_ghost4_y:			.word ghost4_y
-ptr_ghost4_dir:			.word ghost4_dir
-ptr_ghost4_old_x:		.word ghost4_old_x
-ptr_ghost4_old_y:		.word ghost4_old_y
-ptr_ghost4_new_x:		.word ghost4_new_x
-ptr_ghost4_new_y:		.word ghost4_new_y
-ptr_ghost4_under:		.word ghost4_under
-ptr_ghost4_active:		.word ghost4_active
-ptr_powerup_timer:		.word powerup_timer
-ptr_state_save:			.word state_save
-ptr_pellets_total:		.word pellets_total
-ptr_level:				.word level
-ptr_level_flag:			.word level_flag
-ptr_prompt_game_over:	.word prompt_game_over
-ptr_prompt_play_again:	.word prompt_play_again
-ptr_prompt_quit:		.word prompt_quit
-ptr_prompt_level_clear:	.word prompt_level_clear
-ptr_board_init:			.word board_init
+
 
 ghost_table:
 	.word ghost1_x, ghost1_y, ghost1_dir, ghost1_old_x, ghost1_old_y, ghost1_new_x, ghost1_new_y, ghost1_under
 	.word ghost2_x, ghost2_y, ghost2_dir, ghost2_old_x, ghost2_old_y, ghost2_new_x, ghost2_new_y, ghost2_under
 	.word ghost3_x, ghost3_y, ghost3_dir, ghost3_old_x, ghost3_old_y, ghost3_new_x, ghost3_new_y, ghost3_under
 	.word ghost4_x, ghost4_y, ghost4_dir, ghost4_old_x, ghost4_old_y, ghost4_new_x, ghost4_new_y, ghost4_under
-ptr_ghost_table:		.word ghost_table
+
 
 
 ;
@@ -412,8 +343,8 @@ ptr_ghost_table:		.word ghost_table
 lab7:								; This is your main routine which is called from your C wrapper.
 	PUSH {r4-r12,lr}   		; Preserve registers to adhere to the AAPCS
 
- 	bl uart_init
- 	bl gpio_btn_and_LED_init
+	bl uart_init
+	bl gpio_btn_and_LED_init
 	bl uart_interrupt_init
 	bl gpio_interrupt_init
 	bl timer_interrupt_init
@@ -444,6 +375,21 @@ lab7:								; This is your main routine which is called from your C wrapper.
 	BL print_score		; show 000000 on start
 
 MAIN_LOOP:
+	; full redraw check
+	LDR r0, ptr_fredraw_flag
+	LDRB r1,[r0]
+	CMP r1, #1
+	BNE CHECK_RFLAG
+	; clear da redraw flag
+	MOV r1, #0
+	STRB r1,[r0]
+	; redrawing the entire board
+	LDR r0, ptr_ansi_home
+	BL output_string
+	BL print_board
+	BL print_score
+
+CHECK_RFLAG:
 	; check for redraw
 	LDR r0, ptr_redraw_flag
 	LDRB r1, [r0]
@@ -476,6 +422,7 @@ CHECK_GHOST_FLAG:
 	LDR r0, ptr_ghost_redraw_flag
 	LDRB r1, [r0]
 	CMP r1, #1
+	BNE MAIN_LOOP
 	BNE CHECK_LEVEL_FLAG
 
 	; clear the ghost update flag
@@ -484,6 +431,7 @@ CHECK_GHOST_FLAG:
 
 	; update ghosts on the board
 	BL update_ghost_tiles
+
 	; check for collision and update lives
 	BL check_collisionAndLives
 
@@ -974,7 +922,7 @@ GO_COPY:
 ;  CHECK COLLISION AND LIVES
 ; ===========================
 check_collisionAndLives:
-	PUSH {r4-r11,lr}
+    PUSH {r4-r11,lr}
 
 	; updated after implementing all 4 ghosts
 
@@ -990,6 +938,7 @@ check_collisionAndLives:
     LDRB r9, [r0]  		; pacman old y
 
     ; check ghost1, always active
+    MOV r3, #5
     LDR r0, ptr_ghost1_x
     LDRB r6, [r0]
     LDR r0, ptr_ghost1_y
@@ -1014,6 +963,7 @@ CL_SWAP1:
 
     ; check ghost2
 CL_CHECK_G2:
+	MOV r3, #6
     LDR r0, ptr_ghost2_active
     LDRB r10, [r0]
     CMP r10, #1
@@ -1042,6 +992,7 @@ CL_SWAP2:
 
     ; check ghost3
 CL_CHECK_G3:
+	MOV r3, #7
     LDR r0, ptr_ghost3_active
     LDRB r10, [r0]
     CMP r10, #1
@@ -1070,6 +1021,7 @@ CL_SWAP3:
 
     ; check ghost4
 CL_CHECK_G4:
+	MOV r3, #8
     LDR r0, ptr_ghost4_active
     LDRB r10, [r0]
     CMP r10, #1
@@ -1097,6 +1049,12 @@ CL_SWAP4:
     BNE CL_DONE
 
 CL_HIT:
+	; powerup = eat da ghost insted
+	LDR r0, ptr_state
+	LDRB r1,[r0]
+	CMP r1, #2
+	BEQ CL_EAT_GHOST
+
     LDR r0, ptr_lives
     LDRB r1, [r0]
     CMP r1, #0
@@ -1127,11 +1085,11 @@ CL_L1:
 	B CL_RESET
 CL_L0:
 	; means the game over
-    MOV r0, #0x00
-    BL illuminate_LEDs
-    LDR r0, ptr_state
-    MOV r1, #4
-    STRB r1, [r0]
+   MOV r0, #0x00
+   BL illuminate_LEDs
+   LDR r0, ptr_state
+   MOV r1, #4
+   STRB r1, [r0]
     ; pause the game
     LDR r0, ptr_pause
     MOV r1, #1
@@ -1143,271 +1101,454 @@ CL_L0:
     BIC r1, r1, #0x1
     STR r1, [r0, #0x00C]
     ; skip everything else
-    B CL_DONE
+   B CL_DONE
 
 CL_RESET:
-    ; pause
-    LDR r0, ptr_pause
-    MOV r1, #1
-    STRB r1, [r0]
+   ; pause
+   LDR r0, ptr_pause
+   MOV r1, #1
+   STRB r1, [r0]
 
-    ; stop timer
-    MOV r0, #0x0000
-    MOVT r0, #0x4003
-    LDR r1, [r0, #0x00C]
-    BIC r1, r1, #0x1
-    STR r1, [r0, #0x00C]
+   ; stop timer
+   MOV r0, #0x0000
+   MOVT r0, #0x4003
+   LDR r1, [r0, #0x00C]
+   BIC r1, r1, #0x1
+   STR r1, [r0, #0x00C]
 
-    ; clear all pacman and ghost tiles from board
-    ; r4 = pm_x, r5 = pm_y
-    MOV r0, #28
-    MUL r2, r5, r0
-    ADD r2, r2, r4
-    LDR r0, ptr_board
-    ADD r0, r0, r2
+   ; clear all pacman and ghost tiles from board
+   ; r4 = pm_x, r5 = pm_y
+   MOV r0, #28
+   MUL r2, r5, r0
+   ADD r2, r2, r4
+   LDR r0, ptr_board
+   ADD r0, r0, r2
+   MOV r2, #3
+   STRB r2, [r0]
+
+   ; ghost1
+   LDR r0, ptr_ghost1_x
+   LDRB r4, [r0]
+   LDR r0, ptr_ghost1_y
+   LDRB r5, [r0]
+   MOV r0, #28
+   MUL r2, r5, r0
+   ADD r2, r2, r4
+   LDR r0, ptr_board
+   ADD r0, r0, r2
+    LDR r2, ptr_ghost1_under
+    LDRB r2, [r2]
     MOV r2, #3
-    STRB r2, [r0]
+   STRB r2, [r0]
 
-    ; ghost1
-    LDR r0, ptr_ghost1_x
-    LDRB r4, [r0]
-    LDR r0, ptr_ghost1_y
-    LDRB r5, [r0]
-    MOV r0, #28
-    MUL r2, r5, r0
-    ADD r2, r2, r4
-    LDR r0, ptr_board
-    ADD r0, r0, r2
+   ; ghost2, if active
+   LDR r0, ptr_ghost2_active
+   LDRB r4, [r0]
+   CMP r4, #1
+   BNE CL_SKIP_CLEAR_G2
+   LDR r0, ptr_ghost2_x
+   LDRB r4, [r0]
+   LDR r0, ptr_ghost2_y
+   LDRB r5, [r0]
+   MOV r0, #28
+   MUL r2, r5, r0
+   ADD r2, r2, r4
+   LDR r0, ptr_board
+   ADD r0, r0, r2
+    LDR r2, ptr_ghost2_under
+    LDRB r2, [r2]
     MOV r2, #3
-    STRB r2, [r0]
-
-    ; ghost2, if active
-    LDR r0, ptr_ghost2_active
-    LDRB r4, [r0]
-    CMP r4, #1
-    BNE CL_SKIP_CLEAR_G2
-    LDR r0, ptr_ghost2_x
-    LDRB r4, [r0]
-    LDR r0, ptr_ghost2_y
-    LDRB r5, [r0]
-    MOV r0, #28
-    MUL r2, r5, r0
-    ADD r2, r2, r4
-    LDR r0, ptr_board
-    ADD r0, r0, r2
-    MOV r2, #3
-    STRB r2, [r0]
+   STRB r2, [r0]
 
 CL_SKIP_CLEAR_G2:
 	; ghost3 (if active)
-    LDR r0, ptr_ghost3_active
-    LDRB r4, [r0]
-    CMP r4, #1
-    BNE CL_SKIP_CLEAR_G3
-    LDR r0, ptr_ghost3_x
-    LDRB r4, [r0]
-    LDR r0, ptr_ghost3_y
-    LDRB r5, [r0]
-    MOV r0, #28
-    MUL r2, r5, r0
-    ADD r2, r2, r4
-    LDR r0, ptr_board
-    ADD r0, r0, r2
+   LDR r0, ptr_ghost3_active
+   LDRB r4, [r0]
+   CMP r4, #1
+   BNE CL_SKIP_CLEAR_G3
+   LDR r0, ptr_ghost3_x
+   LDRB r4, [r0]
+   LDR r0, ptr_ghost3_y
+   LDRB r5, [r0]
+   MOV r0, #28
+   MUL r2, r5, r0
+   ADD r2, r2, r4
+   LDR r0, ptr_board
+   ADD r0, r0, r2
+    LDR r2, ptr_ghost3_under
+    LDRB r2, [r2]
     MOV r2, #3
-    STRB r2, [r0]
+   STRB r2, [r0]
 
 CL_SKIP_CLEAR_G3:
 	; ghost4 (if active)
-    LDR r0, ptr_ghost4_active
-    LDRB r4, [r0]
-    CMP r4, #1
-    BNE CL_SKIP_CLEAR_G4
-    LDR r0, ptr_ghost4_x
-    LDRB r4, [r0]
-    LDR r0, ptr_ghost4_y
-    LDRB r5, [r0]
-    MOV r0, #28
-    MUL r2, r5, r0
-    ADD r2, r2, r4
-    LDR r0, ptr_board
-    ADD r0, r0, r2
+   LDR r0, ptr_ghost4_active
+   LDRB r4, [r0]
+   CMP r4, #1
+   BNE CL_SKIP_CLEAR_G4
+   LDR r0, ptr_ghost4_x
+   LDRB r4, [r0]
+   LDR r0, ptr_ghost4_y
+   LDRB r5, [r0]
+   MOV r0, #28
+   MUL r2, r5, r0
+   ADD r2, r2, r4
+   LDR r0, ptr_board
+   ADD r0, r0, r2
+    LDR r2, ptr_ghost4_under
+    LDRB r2, [r2]
     MOV r2, #3
-    STRB r2, [r0]
+   STRB r2, [r0]
 
 CL_SKIP_CLEAR_G4:
 	; write all entities back to their starting board positions
-    MOV r0, #28
+   MOV r0, #28
 
-    ; pacman (14, 25)
-    MOV r1, #25
-    MUL r1, r1, r0
-    ADD r1, r1, #14
-    LDR r2, ptr_board
-    ADD r2, r2, r1
-    MOV r1, #4
-    STRB r1, [r2]
+   ; pacman (14, 25)
+   MOV r1, #25
+   MUL r1, r1, r0
+   ADD r1, r1, #14
+   LDR r2, ptr_board
+   ADD r2, r2, r1
+   MOV r1, #4
+   STRB r1, [r2]
 
-    ; ghost1 (13, 12)
-    MOV r1, #12
-    MUL r1, r1, r0
-    ADD r1, r1, #13
-    LDR r2, ptr_board
-    ADD r2, r2, r1
-    MOV r1, #5
-    STRB r1, [r2]
+   ; ghost1 (13, 12)
+   MOV r1, #12
+   MUL r1, r1, r0
+   ADD r1, r1, #13
+   LDR r2, ptr_board
+   ADD r2, r2, r1
+   MOV r1, #5
+   STRB r1, [r2]
 
-    ; ghost2 (13, 17)
-    MOV r1, #17
-    MUL r1, r1, r0
-    ADD r1, r1, #13
-    LDR r2, ptr_board
-    ADD r2, r2, r1
-    MOV r1, #6
-    STRB r1, [r2]
+   ; ghost2 (13, 17)
+   MOV r1, #17
+   MUL r1, r1, r0
+   ADD r1, r1, #13
+   LDR r2, ptr_board
+   ADD r2, r2, r1
+   MOV r1, #6
+   STRB r1, [r2]
 
-    ; ghost3 (12, 15)
-    MOV r1, #15
-    MUL r1, r1, r0
-    ADD r1, r1, #12
-    LDR r2, ptr_board
-    ADD r2, r2, r1
-    MOV r1, #7
-    STRB r1, [r2]
+   ; ghost3 (12, 15)
+   MOV r1, #15
+   MUL r1, r1, r0
+   ADD r1, r1, #12
+   LDR r2, ptr_board
+   ADD r2, r2, r1
+   MOV r1, #7
+   STRB r1, [r2]
 
-    ; ghost4 (15, 16)
-    MOV r1, #16
-    MUL r1, r1, r0
-    ADD r1, r1, #15
-    LDR r2, ptr_board
-    ADD r2, r2, r1
-    MOV r1, #8
-    STRB r1, [r2]
+   ; ghost4 (15, 16)
+   MOV r1, #16
+   MUL r1, r1, r0
+   ADD r1, r1, #15
+   LDR r2, ptr_board
+   ADD r2, r2, r1
+   MOV r1, #8
+   STRB r1, [r2]
 
-    ; reset all ghost 1 globals
-    MOV r4, #13
-    MOV r5, #12
-    LDR r0, ptr_ghost1_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost1_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost1_old_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost1_old_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost1_new_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost1_new_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost1_under
-    MOV r1, #3
-    STRB r1, [r0]
-    LDR r0, ptr_ghost1_dir
-    MOV r1, #0
-    STRB r1, [r0]
+   ; reset all ghost 1 globals
+   MOV r4, #13
+   MOV r5, #12
+   LDR r0, ptr_ghost1_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost1_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost1_old_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost1_old_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost1_new_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost1_new_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost1_under
+   MOV r1, #3
+   STRB r1, [r0]
+   LDR r0, ptr_ghost1_dir
+   MOV r1, #0
+   STRB r1, [r0]
 
-    ; reset all ghost 2 globals
-    MOV r4, #13
-    MOV r5, #17
-    LDR r0, ptr_ghost2_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost2_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost2_old_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost2_old_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost2_new_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost2_new_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost2_under
-    MOV r1, #3
-    STRB r1, [r0]
-    LDR r0, ptr_ghost2_dir
-    MOV r1, #0
-    STRB r1, [r0]
-    LDR r0, ptr_ghost2_active
-    MOV r1, #0
-    STRB r1, [r0]
+   ; reset all ghost 2 globals
+   MOV r4, #13
+   MOV r5, #17
+   LDR r0, ptr_ghost2_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost2_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost2_old_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost2_old_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost2_new_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost2_new_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost2_under
+   MOV r1, #3
+   STRB r1, [r0]
+   LDR r0, ptr_ghost2_dir
+   MOV r1, #0
+   STRB r1, [r0]
+   LDR r0, ptr_ghost2_active
+   MOV r1, #0
+   STRB r1, [r0]
 
-    ; reset all ghost 3 globals
-    MOV r4, #12
-    MOV r5, #15
-    LDR r0, ptr_ghost3_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost3_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost3_old_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost3_old_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost3_new_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost3_new_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost3_under
-    MOV r1, #3
-    STRB r1, [r0]
-    LDR r0, ptr_ghost3_dir
-    MOV r1, #0
-    STRB r1, [r0]
-    LDR r0, ptr_ghost3_active
-    MOV r1, #0
-    STRB r1, [r0]
+   ; reset all ghost 3 globals
+   MOV r4, #12
+   MOV r5, #15
+   LDR r0, ptr_ghost3_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost3_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost3_old_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost3_old_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost3_new_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost3_new_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost3_under
+   MOV r1, #3
+   STRB r1, [r0]
+   LDR r0, ptr_ghost3_dir
+   MOV r1, #0
+   STRB r1, [r0]
+   LDR r0, ptr_ghost3_active
+   MOV r1, #0
+   STRB r1, [r0]
 
-    ; reset all ghost 4 globals
-    MOV r4, #15
-    MOV r5, #16
-    LDR r0, ptr_ghost4_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost4_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost4_old_x
+   ; reset all ghost 4 globals
+   MOV r4, #15
+   MOV r5, #16
+   LDR r0, ptr_ghost4_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost4_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost4_old_x
 	STRB r4, [r0]
-    LDR r0, ptr_ghost4_old_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost4_new_x
-    STRB r4, [r0]
-    LDR r0, ptr_ghost4_new_y
-    STRB r5, [r0]
-    LDR r0, ptr_ghost4_under
-    MOV r1, #3
-    STRB r1, [r0]
-    LDR r0, ptr_ghost4_dir
-    MOV r1, #0
-    STRB r1, [r0]
-    LDR r0, ptr_ghost4_active
-    MOV r1, #0
-    STRB r1, [r0]
+   LDR r0, ptr_ghost4_old_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost4_new_x
+   STRB r4, [r0]
+   LDR r0, ptr_ghost4_new_y
+   STRB r5, [r0]
+   LDR r0, ptr_ghost4_under
+   MOV r1, #3
+   STRB r1, [r0]
+   LDR r0, ptr_ghost4_dir
+   MOV r1, #0
+   STRB r1, [r0]
+   LDR r0, ptr_ghost4_active
+   MOV r1, #0
+   STRB r1, [r0]
 
-    ; reset pacman
-    MOV r4, #14
-    MOV r5, #25
-    LDR r0, ptr_pm_x
-    STRB r4, [r0]
-    LDR r0, ptr_pm_y
-    STRB r5, [r0]
-    LDR r0, ptr_old_x
-    STRB r4, [r0]
-    LDR r0, ptr_old_y
-    STRB r5, [r0]
-    LDR r0, ptr_new_x
-    STRB r4, [r0]
-    LDR r0, ptr_new_y
-    STRB r5, [r0]
+   ; reset pacman
+   MOV r4, #14
+   MOV r5, #25
+   LDR r0, ptr_pm_x
+   STRB r4, [r0]
+   LDR r0, ptr_pm_y
+   STRB r5, [r0]
+   LDR r0, ptr_old_x
+   STRB r4, [r0]
+   LDR r0, ptr_old_y
+   STRB r5, [r0]
+   LDR r0, ptr_new_x
+   STRB r4, [r0]
+   LDR r0, ptr_new_y
+   STRB r5, [r0]
 
-    ; reset pellets counter, yes ik thats not how the game is supposed to work but we're running out of time
-    LDR r0, ptr_pellets_eaten
-    MOV r1, #0
-    STRB r1, [r0]
+   ; reset pellets counter, yes ik thats not how the game is supposed to work but we're running out of time
+   LDR r0, ptr_pellets_eaten
+   MOV r1, #0
+   STRB r1, [r0]
 
-    ; full redraw bc paused on life lost so we have the time
-    LDR r0, ptr_ansi_home
-    BL output_string
-    BL print_board
-    BL print_score
+   ; full redraw bc paused on life lost so we have the time
+   LDR r0, ptr_ansi_home
+   BL output_string
+   BL print_board
+   BL print_score
 
 CL_DONE:
+
+	POP {r4-r11, lr}
+	MOV pc, lr
+
+ptr_prompt:				.word prompt
+ptr_lookup_color:		.word lookup_color
+ptr_lookup_char:		.word lookup_char
+ptr_board:				.word board
+ptr_lives:				.word lives
+ptr_pm_x:				.word pm_x
+ptr_pm_y:				.word pm_y
+ptr_score:				.word score
+ptr_dir:				.word dir
+ptr_pause:				.word pause
+ptr_state:				.word state
+ptr_cursor_row:			.word cursor_row
+ptr_cursor_col:			.word cursor_col
+ptr_redraw_flag:		.word redraw_flag
+ptr_old_x:				.word old_x
+ptr_old_y:				.word old_y
+ptr_new_x:				.word new_x
+ptr_new_y:				.word new_y
+ptr_remove_cursor:		.word remove_cursor
+ptr_ansi_home:			.word ansi_home
+ptr_ansi_clear:			.word ansi_clear
+ptr_ansi_black:			.word ansi_black
+ptr_score_flag:			.word score_flag
+ptr_score_string:		.word score_string
+ptr_ghost1_x:			.word ghost1_x
+ptr_ghost1_y:			.word ghost1_y
+ptr_ghost1_dir:			.word ghost1_dir
+ptr_ghost1_old_x:		.word ghost1_old_x
+ptr_ghost1_old_y:		.word ghost1_old_y
+ptr_ghost1_new_x:		.word ghost1_new_x
+ptr_ghost1_new_y:		.word ghost1_new_y
+ptr_ghost_redraw_flag:	.word ghost_redraw_flag
+ptr_ghost_valid_dirs:	.word ghost_valid_dirs
+ptr_xor_in:				.word xor_in
+ptr_ghost1_under:		.word ghost1_under
+ptr_pellets_eaten:		.word pellets_eaten
+ptr_ghost2_x:			.word ghost2_x
+ptr_ghost2_y:			.word ghost2_y
+ptr_ghost2_dir:			.word ghost2_dir
+ptr_ghost2_old_x:		.word ghost2_old_x
+ptr_ghost2_old_y:		.word ghost2_old_y
+ptr_ghost2_new_x:		.word ghost2_new_x
+ptr_ghost2_new_y:		.word ghost2_new_y
+ptr_ghost2_under:		.word ghost2_under
+ptr_ghost2_active:		.word ghost2_active
+ptr_ghost3_x:			.word ghost3_x
+ptr_ghost3_y:			.word ghost3_y
+ptr_ghost3_dir:			.word ghost3_dir
+ptr_ghost3_old_x:		.word ghost3_old_x
+ptr_ghost3_old_y:		.word ghost3_old_y
+ptr_ghost3_new_x:		.word ghost3_new_x
+ptr_ghost3_new_y:		.word ghost3_new_y
+ptr_ghost3_under:		.word ghost3_under
+ptr_ghost3_active:		.word ghost3_active
+ptr_ghost4_x:			.word ghost4_x
+ptr_ghost4_y:			.word ghost4_y
+ptr_ghost4_dir:			.word ghost4_dir
+ptr_ghost4_old_x:		.word ghost4_old_x
+ptr_ghost4_old_y:		.word ghost4_old_y
+ptr_ghost4_new_x:		.word ghost4_new_x
+ptr_ghost4_new_y:		.word ghost4_new_y
+ptr_ghost4_under:		.word ghost4_under
+ptr_ghost4_active:		.word ghost4_active
+ptr_powerup_timer:		.word powerup_timer
+ptr_state_save:			.word state_save
+ptr_pellets_total:		.word pellets_total
+ptr_level:				.word level
+ptr_level_flag:			.word level_flag
+ptr_prompt_game_over:	.word prompt_game_over
+ptr_prompt_play_again:	.word prompt_play_again
+ptr_prompt_quit:		.word prompt_quit
+ptr_prompt_level_clear:	.word prompt_level_clear
+ptr_board_init:			.word board_init
+ptr_fredraw_flag: 		.word fredraw_flag
+ptr_ghost_table:		.word ghost_table
+
+; ==============
+;  EAT DA GHOST
+; ==============
+
+CL_EAT_GHOST:
+	SUB r12, r3, #5
+
+	LSL r2, r12,#5
+	LDR r0, ptr_ghost_table
+	ADD r2, r2, r0
+
+	LDR r0, [r2,#28]
+	LDRB r1,[r0]
+	MOV r10,#28
+	MUL r11, r7, r10
+	ADD r11, r11, r6
+	LDR r10, ptr_board
+	ADD r10, r10, r11
+	STRB r1, [r10]
+
+	CMP r3, #5
+	BEQ GHOST1HOME
+	CMP r3, #6
+	BEQ GHOST2HOME
+	CMP r3, #7
+	BEQ GHOST3HOME
+	CMP r3, #8
+	BEQ GHOST4HOME
+	B EG_DONE
+GHOST1HOME:
+	MOV r4,#13
+	MOV r5, #12
+	B HOMEDONE
+GHOST2HOME:
+	MOV r4,#13
+	MOV r5, #17
+	B HOMEDONE
+GHOST3HOME:
+	MOV r4,#12
+	MOV r5, #15
+	B HOMEDONE
+GHOST4HOME:
+	MOV r4,#15
+	MOV r5, #16
+HOMEDONE:
+	; ghostx
+	LDR r0,[r2, #0]
+	STRB r4,[r0]
+	; ghosty
+	LDR r0, [r2,#4]
+	STRB r5,[r0]
+
+	LDR r0,[r2,#8]
+	MOV r1,#0
+	STRB r1, [r0]
+	; oldx,y
+	LDR r0,[r2,#12]
+	STRB r4,[r0]
+	LDR r0,[r2,#16]
+	STRB r5,[r0]
+	; new x,y
+	LDR r0,[r2,#20]
+	STRB r4,[r0]
+	LDR r0,[r2,#24]
+	STRB r5,[r0]
+
+	LDR r0,[r2,#28]
+	MOV r1,#3
+	STRB r1, [r0]
+	; writin ghosts back at home on the board
+	MOV r10, #28
+	MUL r11, r5, r10
+	ADD r11, r11, r4
+	LDR r10, ptr_board
+	ADD r10, r10, r11
+	STRB r3,[r10]
+	; pacman at currentpos
+	LDR r0, ptr_pm_x
+	LDRB r4,[r0]
+	LDR r0, ptr_pm_y
+	LDRB r5, [r0]
+
+	MOV r10,#28
+	MUL r11, r5,r10
+	ADD r11, r11, r4
+	LDR r10, ptr_board
+	ADD r10, r10, r11
+	MOV r0,#4
+	STRB r0,[r10]
+	; redraw so eaten ghost goes back hoem
+	LDR r0, ptr_fredraw_flag
+	MOV r1, #1
+	STRB r1,[r0]
+
+EG_DONE:
 
 	POP {r4-r11, lr}
 	MOV pc, lr
@@ -1640,10 +1781,24 @@ print_row_loop:
 	BL output_string
 
 	; char
+	CMP r2, #5
+	BLT normal_char
+	CMP r2, #8
+	BGT normal_char
+
+	LDR r1, ptr_state
+	LDRB r3, [r1]
+	CMP r3, #2
+	BNE normal_char
+	MOV r0, #87		; ascii for W
+	BL output_character
+	B char_done
+normal_char:
 	LDR r1, ptr_lookup_char
 	ADD r1, r1, r2		; both bytes, so just add base + offset
 	LDRB r0, [r1]
 	BL output_character
+char_done:
 
 	SUB r6, r6, #1
 	CMP r6, #0			; tiles left in row ?
@@ -1704,10 +1859,10 @@ SET_RIGHT:
 
 UART_HANDLER_END:
 	; clear UART interrupt
-    MOV r4, #0xC044
-    MOVT r4, #0x4000
-    MOV r5, #0x10
-    STR r5,[r4]
+   MOV r4, #0xC044
+   MOVT r4, #0x4000
+   MOV r5, #0x10
+   STR r5,[r4]
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
@@ -1717,7 +1872,7 @@ UART_HANDLER_END:
 ;  SWITCH INTERRUPT HANDLER
 ; ==========================
 Switch_Handler:
-	PUSH {r4-r12,lr} ; Spill registers to stack
+	PUSH {r4-r12,lr}	; Spill registers to stack
 	; Your code for your UART handler goes here.
 	; Remember to preserver registers r4-r12 by pushing then popping
 	; them to & from the stack at the beginning & end of the handler
@@ -1738,6 +1893,7 @@ Switch_Handler:
 	B ENABLE_TIMER
 
 DISABLE_TIMER:
+	MOV r7, #0	; set state to paused
 	LDRB r7,[r6]
 	LDR r0, ptr_state_save
 	STRB r7,[r0]
@@ -1745,12 +1901,17 @@ DISABLE_TIMER:
 	STRB r7, [r6]
 	;disable timer
 
-	LDR r5, [r4, #0x00C] ; GPTMCTL Offset
+	LDR r5, [r4, #0x00C]	; GPTMCTL Offset
 	BIC r5, r5, #0x1
 	STR r5, [r4, #0x00C]
 	B SWITCH_HANDLER_END
 
 ENABLE_TIMER:
+	;MOV r7, #1	; set state to normal
+				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+				; needs to be changed to remember state before the game was paused (powerup)
+				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	;STRB r7, [r6]
 	LDR r0, ptr_state_save
 	LDRB r7, [r0]
 	STRB r7,[r6]
@@ -1760,15 +1921,14 @@ ENABLE_TIMER:
 	STR r5, [r4, #0x00C]
 
 SWITCH_HANDLER_END:
-    ; clear interrupt
+   ; clear interrupt
 	MOV r4, #0x5000
-    MOVT r4, #0x4002
-    MOV r5, #0x10
-    STR r5, [r4, #0x41C]
+   MOVT r4, #0x4002
+   MOV r5, #0x10
+   STR r5, [r4, #0x41C]
 
-	POP {r4-r12,lr}  ; Restore registers from stack
-	BX lr       ; Return
-
+	POP {r4-r12,lr}  	; Restore registers from stack
+	BX lr       	; Return
 
 
 ; =========================
@@ -1846,6 +2006,10 @@ POWERUP_DONE:
 	; led off
 	MOV r0,#48
 	BL illuminate_RGB_LED
+	; redraw for ghosts going back to normal
+	LDR r0, ptr_fredraw_flag
+	MOV r1,#1
+	STRB r1,[r0]
 
 CONTINUE:
 	; move all active ghosts
@@ -1880,7 +2044,6 @@ SKIP_GHOST3_MOVE:
 	BL move_ghost
 
 SKIP_GHOST4_MOVE:
-
 	; load current position and direction
 	LDR r0, ptr_pm_x
 	LDRB r1, [r0]		; r1 = x
@@ -2086,22 +2249,30 @@ PELLET_DONE:
 
 PU_PELLET:
 	LDR r0, ptr_state
-	MOV r1, #2
+	MOV r1,#2
 	STRB r1, [r0]
+	LDR r0, ptr_state_save
+	MOV r1, #2
+	STRB r1,[r0]
 
 	LDR r0, ptr_powerup_timer
 	MOV r1, #60
 	STR r1, [r0]
 	; increment pellets for powerups
 	LDR r0, ptr_pellets_eaten
-	LDRB r1, [r0]
-	ADD r1, r1, #1
-	STRB r1, [r0]
+	LDRB r1,[r0]
+	ADD r1,r1, #1
+	STRB r1,[r0]
 	; led to blue
-	MOV r0, #51
+	MOV r0,#51
 	BL illuminate_RGB_LED
+	;for ghosts to become W
+	LDR r0, ptr_fredraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
 
 MOVE_DONE:
+
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
@@ -2634,10 +2805,24 @@ draw_tile:
 	BL output_string
 
 	; char
+	CMP r6, #5
+	BLT normal_charx
+	CMP r6, #8
+	BGT normal_charx
+
+	LDR r1, ptr_state
+	LDRB r3, [r1]
+	CMP r3, #2
+	BNE normal_charx
+	MOV r0, #87		; ascii for W
+	BL output_character
+	B char_donex
+normal_charx:
 	LDR r1, ptr_lookup_char
 	ADD r1, r1, r6
 	LDRB r0, [r1]
 	BL output_character
+char_donex:
 
 	POP {r4-r8,lr}  	; Restore registers from stack
 	MOV pc, lr       	; Return
@@ -2649,18 +2834,19 @@ draw_tile:
 simple_read_character:
 	PUSH {r4, lr}
 
-    MOV r1, #0xC000
-    MOVT r1, #0x4000          ; UART0 base
+   MOV r1, #0xC000
+   MOVT r1, #0x4000          ; UART0 base
 
 WAIT_RX:
-    LDR r2, [r1, #0x018]      ; UARTFR
-    AND r2, r2, #0x10          ; RXFE bit
-    CMP r2, #0
-    BEQ RX_READY
-    B WAIT_RX
+   LDR r2, [r1, #0x018]      ; UARTFR
+   AND r2, r2, #0x10          ; RXFE bit
+   CMP r2, #0
+   BEQ RX_READY
+   B WAIT_RX
 
 RX_READY:
-    LDRB r0, [r1]     ; read UARTDR
+   LDRB r0, [r1]     ; read UARTDR
 
-    POP {r4, lr}
+   POP {r4, lr}
 	MOV pc, lr	; Return
+

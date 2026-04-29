@@ -77,6 +77,11 @@
 	.global prompt_quit
 	.global prompt_level_clear
 	.global fredraw_flag
+	.global ghosts_eaten_count
+	.global ghost1_eaten
+	.global ghost2_eaten
+	.global ghost3_eaten
+	.global ghost4_eaten
 
 
 ; ==============
@@ -267,12 +272,18 @@ state_save:			.byte 1
 pellets_total:		.byte 0
 level_flag:			.byte 0
 fredraw_flag:		.byte 0
-level:				.byte 0
+level:				.byte 1
 
-prompt_game_over:	.string "    GAME  OVER    ", 0
-prompt_play_again:	.string "  P = PLAY AGAIN  ", 0
-prompt_quit:			.string "  Q = QUIT        ", 0
-prompt_level_clear:	.string "   LEVEL  CLEAR   ", 0
+prompt_game_over:	.string "     GAME  OVER    ", 0
+prompt_play_again:	.string "   P = PLAY AGAIN  ", 0
+prompt_quit:		.string "   Q = QUIT        ", 0
+prompt_level_clear:	.string "    LEVEL  CLEAR   ", 0
+prompt_clear:		.string "                   ", 0
+ghosts_eaten_count:	.byte 0
+ghost1_eaten:		.byte 0
+ghost2_eaten:		.byte 0
+ghost3_eaten:		.byte 0
+ghost4_eaten:		.byte 0
 
 	.text
 
@@ -380,14 +391,42 @@ MAIN_LOOP:
 	LDRB r1,[r0]
 	CMP r1, #1
 	BNE CHECK_RFLAG
+
 	; clear da redraw flag
 	MOV r1, #0
 	STRB r1,[r0]
+
+	; clear ghost and pacman redraw flags to not overwrite
+	LDR r0, ptr_ghost_redraw_flag
+	MOV r1, #0
+	STRB r1, [r0]
+	LDR r0, ptr_redraw_flag
+	MOV r1, #0
+	STRB r1, [r0]
+
+	; stop timer for redraw
+	MOV r0, #0x0000
+	MOVT r0, #0x4003
+	LDR r1, [r0, #0x00C]
+	BIC r1, r1, #0x1
+	STR r1, [r0, #0x00C]
+
 	; redrawing the entire board
 	LDR r0, ptr_ansi_home
 	BL output_string
 	BL print_board
 	BL print_score
+
+	; reenable timer after redraw if not paused
+	LDR r0, ptr_pause
+	LDRB r1, [r0]
+	CMP r1, #1
+	BEQ CHECK_RFLAG		; paused, leave timer off
+	MOV r0, #0x0000
+	MOVT r0, #0x4003
+	LDR r1, [r0, #0x00C]
+	ORR r1, r1, #0x1
+	STR r1, [r0, #0x00C]
 
 CHECK_RFLAG:
 	; check for redraw
@@ -400,7 +439,7 @@ CHECK_RFLAG:
 	MOV r1, #0
 	STRB r1, [r0]
 
-	; redraw
+	; only update tiles
 	BL update_tiles
 
 CHECK_SCORE_FLAG:
@@ -422,7 +461,6 @@ CHECK_GHOST_FLAG:
 	LDR r0, ptr_ghost_redraw_flag
 	LDRB r1, [r0]
 	CMP r1, #1
-	BNE MAIN_LOOP
 	BNE CHECK_LEVEL_FLAG
 
 	; clear the ghost update flag
@@ -1138,7 +1176,6 @@ CL_RESET:
    ADD r0, r0, r2
     LDR r2, ptr_ghost1_under
     LDRB r2, [r2]
-    MOV r2, #3
    STRB r2, [r0]
 
    ; ghost2, if active
@@ -1157,7 +1194,6 @@ CL_RESET:
    ADD r0, r0, r2
     LDR r2, ptr_ghost2_under
     LDRB r2, [r2]
-    MOV r2, #3
    STRB r2, [r0]
 
 CL_SKIP_CLEAR_G2:
@@ -1177,7 +1213,6 @@ CL_SKIP_CLEAR_G2:
    ADD r0, r0, r2
     LDR r2, ptr_ghost3_under
     LDRB r2, [r2]
-    MOV r2, #3
    STRB r2, [r0]
 
 CL_SKIP_CLEAR_G3:
@@ -1197,7 +1232,6 @@ CL_SKIP_CLEAR_G3:
    ADD r0, r0, r2
     LDR r2, ptr_ghost4_under
     LDRB r2, [r2]
-    MOV r2, #3
    STRB r2, [r0]
 
 CL_SKIP_CLEAR_G4:
@@ -1367,16 +1401,16 @@ CL_SKIP_CLEAR_G4:
    MOV r1, #0
    STRB r1, [r0]
 
-   ; full redraw bc paused on life lost so we have the time
-   LDR r0, ptr_ansi_home
-   BL output_string
-   BL print_board
-   BL print_score
+   ; signal full redraw
+   LDR r0, ptr_fredraw_flag
+   MOV r1, #1
+   STRB r1, [r0]
 
 CL_DONE:
 
 	POP {r4-r11, lr}
 	MOV pc, lr
+
 
 ptr_prompt:				.word prompt
 ptr_lookup_color:		.word lookup_color
@@ -1453,102 +1487,195 @@ ptr_prompt_level_clear:	.word prompt_level_clear
 ptr_board_init:			.word board_init
 ptr_fredraw_flag: 		.word fredraw_flag
 ptr_ghost_table:		.word ghost_table
+ptr_ghosts_eaten_count:	.word ghosts_eaten_count
+ptr_ghost1_eaten:		.word ghost1_eaten
+ptr_ghost2_eaten:		.word ghost2_eaten
+ptr_ghost3_eaten:		.word ghost3_eaten
+ptr_ghost4_eaten:		.word ghost4_eaten
+ptr_prompt_clear:		.word prompt_clear
+
 
 ; ==============
 ;  EAT DA GHOST
 ; ==============
-
 CL_EAT_GHOST:
-	SUB r12, r3, #5
+	; r3 = ghost tile value (5-8), r6 = ghost x, r7 = ghost y
 
-	LSL r2, r12,#5
-	LDR r0, ptr_ghost_table
-	ADD r2, r2, r0
+    ; calculate score (100 * 2^ghosts eaten count)
+    LDR r0, ptr_ghosts_eaten_count
+    LDRB r1, [r0]
+    ADD r1, r1, #1
+    STRB r1, [r0]           ; increment eaten count
 
-	LDR r0, [r2,#28]
-	LDRB r1,[r0]
-	MOV r10,#28
-	MUL r11, r7, r10
-	ADD r11, r11, r6
-	LDR r10, ptr_board
-	ADD r10, r10, r11
-	STRB r1, [r10]
+    ; score gained = 100 << (count-1): 1=100, 2=200, 3=400, 4=800
+    MOV r2, #100
+    SUB r1, r1, #1
+    LSL r2, r2, r1          ; r2 = points gained
 
-	CMP r3, #5
-	BEQ GHOST1HOME
-	CMP r3, #6
-	BEQ GHOST2HOME
-	CMP r3, #7
-	BEQ GHOST3HOME
-	CMP r3, #8
-	BEQ GHOST4HOME
-	B EG_DONE
-GHOST1HOME:
-	MOV r4,#13
-	MOV r5, #12
-	B HOMEDONE
-GHOST2HOME:
-	MOV r4,#13
-	MOV r5, #17
-	B HOMEDONE
-GHOST3HOME:
-	MOV r4,#12
-	MOV r5, #15
-	B HOMEDONE
-GHOST4HOME:
-	MOV r4,#15
-	MOV r5, #16
-HOMEDONE:
-	; ghostx
-	LDR r0,[r2, #0]
-	STRB r4,[r0]
-	; ghosty
-	LDR r0, [r2,#4]
-	STRB r5,[r0]
+    LDR r0, ptr_score
+    LDR r1, [r0]
+    ADD r1, r1, r2
+    STR r1, [r0]
+    LDR r0, ptr_score_flag
+    MOV r1, #1
+    STRB r1, [r0]
 
-	LDR r0,[r2,#8]
-	MOV r1,#0
-	STRB r1, [r0]
-	; oldx,y
-	LDR r0,[r2,#12]
-	STRB r4,[r0]
-	LDR r0,[r2,#16]
-	STRB r5,[r0]
-	; new x,y
-	LDR r0,[r2,#20]
-	STRB r4,[r0]
-	LDR r0,[r2,#24]
-	STRB r5,[r0]
+    ; restore tile under ghost at its current position, compute which ghost table entry and get ghost_under
+    SUB r12, r3, #5         ; r12 = ghost index (0-3)
+    LSL r2, r12, #5
+    LDR r0, ptr_ghost_table
+    ADD r2, r2, r0          ; r2 = table entry base
 
-	LDR r0,[r2,#28]
-	MOV r1,#3
-	STRB r1, [r0]
-	; writin ghosts back at home on the board
-	MOV r10, #28
-	MUL r11, r5, r10
-	ADD r11, r11, r4
-	LDR r10, ptr_board
-	ADD r10, r10, r11
-	STRB r3,[r10]
-	; pacman at currentpos
-	LDR r0, ptr_pm_x
-	LDRB r4,[r0]
-	LDR r0, ptr_pm_y
-	LDRB r5, [r0]
+    LDR r0, [r2, #28]       ; ptr ghost under
+    LDRB r1, [r0]           ; tile under
+    MOV r8, r1			; save ghost under for later
+    MOV r0, #28
+    MUL r11, r7, r0
+    ADD r11, r11, r6
+    LDR r0, ptr_board
+    ADD r0, r0, r11
+    STRB r1, [r0]           ; restore tile at ghost current pos
 
-	MOV r10,#28
-	MUL r11, r5,r10
-	ADD r11, r11, r4
-	LDR r10, ptr_board
-	ADD r10, r10, r11
-	MOV r0,#4
-	STRB r0,[r10]
-	; redraw so eaten ghost goes back hoem
-	LDR r0, ptr_fredraw_flag
-	MOV r1, #1
-	STRB r1,[r0]
+    ; send ghost back to home position
+    CMP r3, #5
+    BEQ EG_GHOST1HOME
+    CMP r3, #6
+    BEQ EG_GHOST2HOME
+    CMP r3, #7
+    BEQ EG_GHOST3HOME
+    CMP r3, #8
+    BEQ EG_GHOST4HOME
+    B EG_DONE
+
+EG_GHOST1HOME:
+    MOV r4, #13
+    MOV r5, #12
+    LDR r0, ptr_ghost1_eaten
+    MOV r1, #1
+    STRB r1, [r0]
+    B EG_SET_HOME
+EG_GHOST2HOME:
+    MOV r4, #13
+    MOV r5, #17
+    LDR r0, ptr_ghost2_eaten
+    MOV r1, #1
+    STRB r1, [r0]
+    LDR r0, ptr_ghost2_active
+    MOV r1, #0
+    STRB r1, [r0]
+    B EG_SET_HOME
+EG_GHOST3HOME:
+    MOV r4, #12
+    MOV r5, #15
+    LDR r0, ptr_ghost3_eaten
+    MOV r1, #1
+    STRB r1, [r0]
+    LDR r0, ptr_ghost3_active
+    MOV r1, #0
+    STRB r1, [r0]
+    B EG_SET_HOME
+EG_GHOST4HOME:
+    MOV r4, #15
+    MOV r5, #16
+    LDR r0, ptr_ghost4_eaten
+    MOV r1, #1
+    STRB r1, [r0]
+    LDR r0, ptr_ghost4_active
+    MOV r1, #0
+    STRB r1, [r0]
+
+EG_SET_HOME:
+    ; set all position globals to home
+    LDR r0, [r2, #0]
+    STRB r4, [r0]   	; ghost x
+    LDR r0, [r2, #4]
+    STRB r5, [r0]   	; ghost y
+    LDR r0, [r2, #8]
+	MOV r1, #0
+	STRB r1, [r0]  		; dir
+    LDR r0, [r2, #12]
+    STRB r4, [r0]   	; old x
+    LDR r0, [r2, #16]
+    STRB r5, [r0]   	; old y
+    LDR r0, [r2, #20]
+    STRB r4, [r0]   	; new x
+    LDR r0, [r2, #24]
+    STRB r5, [r0]   	; new y
+    LDR r0, [r2, #28]
+    MOV r1, #3
+    STRB r1, [r0]  		; ghost_under = empty
+
+    ; write ghost tile at home on board
+    MOV r0, #28
+    MUL r11, r5, r0
+    ADD r11, r11, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r11
+    STRB r3, [r0]           ; r3 = ghost tile value
+
+    ; write pacman at current pos
+    LDR r0, ptr_pm_x
+    LDRB r4, [r0]
+    LDR r0, ptr_pm_y
+    LDRB r5, [r0]
+    MOV r0, #28
+    MUL r11, r5, r0
+    ADD r11, r11, r4
+    LDR r0, ptr_board
+    ADD r0, r0, r11
+    MOV r1, #4
+    STRB r1, [r0]
+
+    ; signal full redraw
+    LDR r0, ptr_fredraw_flag
+    MOV r1, #1
+    STRB r1, [r0]
 
 EG_DONE:
+	; only count pellet if pacman and ghost were on the exact same tile
+	CMP r8, #1
+	BNE EG_SKIP_PELLET
+	LDR r0, ptr_pm_x
+	LDRB r0, [r0]
+    CMP r0, r6                  ; r6 = ghost_x
+    BNE EG_SKIP_PELLET
+    LDR r0, ptr_pm_y
+    LDRB r0, [r0]
+    CMP r0, r7                  ; r7 = ghost_y
+    BNE EG_SKIP_PELLET
+
+    ; same tile, count the hidden pellet
+    LDR r0, ptr_pellets_total
+    LDRB r1, [r0]
+    ADD r1, r1, #1
+    STRB r1, [r0]
+    LDR r0, ptr_pellets_eaten
+    LDRB r1, [r0]
+    ADD r1, r1, #1
+    STRB r1, [r0]
+    LDR r0, ptr_score
+    LDR r1, [r0]
+    ADD r1, r1, #10
+    STR r1, [r0]
+
+    ; check for level complete
+    LDR r0, ptr_pellets_total
+    LDRB r1, [r0]
+    CMP r1, #238
+    BNE EG_SKIP_PELLET
+    LDR r0, ptr_level_flag
+    MOV r1, #1
+    STRB r1, [r0]
+    LDR r0, ptr_pause
+    MOV r1, #1
+    STRB r1, [r0]
+    MOV r0, #0x0000
+    MOVT r0, #0x4003
+    LDR r1, [r0, #0x00C]
+    BIC r1, r1, #0x1
+    STR r1, [r0, #0x00C]
+
+EG_SKIP_PELLET:
 
 	POP {r4-r11, lr}
 	MOV pc, lr
@@ -1652,14 +1779,21 @@ UGT_SKIP_G4:
 print_score:
 	PUSH {r4-r7,lr}
 
+	; switch to black bg, white fg
+	LDR r0, ptr_ansi_black
+	BL output_string
+
+	; clear row (maybe level clear still there)
+	MOV r0, #1
+    MOV r1, #4
+    BL move_cursor
+    LDR r0, ptr_prompt_clear
+    BL output_string
+
 	; move cursor to score location, starts row 1 col 11
 	MOV r0, #1
 	MOV r1, #11
 	BL move_cursor
-
-	; switch to black bg, white fg
-	LDR r0, ptr_ansi_black
-	BL output_string
 
 	; load the score
 	LDR r5, ptr_score
@@ -1859,10 +1993,10 @@ SET_RIGHT:
 
 UART_HANDLER_END:
 	; clear UART interrupt
-   MOV r4, #0xC044
-   MOVT r4, #0x4000
-   MOV r5, #0x10
-   STR r5,[r4]
+    MOV r4, #0xC044
+    MOVT r4, #0x4000
+    MOV r5, #0x10
+    STR r5,[r4]
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
@@ -1899,33 +2033,29 @@ DISABLE_TIMER:
 	STRB r7,[r0]
 	MOV r7, #0 ; set state to paused
 	STRB r7, [r6]
-	;disable timer
 
+	; disable timer
 	LDR r5, [r4, #0x00C]	; GPTMCTL Offset
 	BIC r5, r5, #0x1
 	STR r5, [r4, #0x00C]
 	B SWITCH_HANDLER_END
 
 ENABLE_TIMER:
-	;MOV r7, #1	; set state to normal
-				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-				; needs to be changed to remember state before the game was paused (powerup)
-				; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	;STRB r7, [r6]
+	; restore previous state
 	LDR r0, ptr_state_save
 	LDRB r7, [r0]
-	STRB r7,[r6]
+	STRB r7, [r6]
 
 	LDR r5, [r4, #0x00C]
 	ORR r5, r5, #1
 	STR r5, [r4, #0x00C]
 
 SWITCH_HANDLER_END:
-   ; clear interrupt
+    ; clear interrupt
 	MOV r4, #0x5000
-   MOVT r4, #0x4002
-   MOV r5, #0x10
-   STR r5, [r4, #0x41C]
+    MOVT r4, #0x4002
+    MOV r5, #0x10
+    STR r5, [r4, #0x41C]
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
@@ -1999,28 +2129,84 @@ POWERUP_DONE:
 	LDR r0, ptr_state
 	MOV r1, #1
 	STRB r1, [r0]
+
 	; clear tiner
 	LDR r0, ptr_powerup_timer
-	MOV r1,#0
+	MOV r1, #0
 	STR r1, [r0]
-	; led off
-	MOV r0,#48
-	BL illuminate_RGB_LED
-	; redraw for ghosts going back to normal
-	LDR r0, ptr_fredraw_flag
-	MOV r1,#1
-	STRB r1,[r0]
 
-CONTINUE:
+	; led off
+	MOV r0, #48
+	BL illuminate_RGB_LED
+
+	; clear all eaten flags so ghosts come back
+	LDR r0, ptr_ghost1_eaten
+	MOV r1, #0
+	STRB r1, [r0]
+    LDR r0, ptr_ghost2_eaten
+    MOV r1, #0
+    STRB r1, [r0]
+    LDR r0, ptr_ghost3_eaten
+    MOV r1, #0
+    STRB r1, [r0]
+    LDR r0, ptr_ghost4_eaten
+    MOV r1, #0
+    STRB r1, [r0]
+
+    ; ghosts 2-4, only reactivate if pellets threshold has been met
+    LDR r11, ptr_pellets_eaten
+    LDRB r11, [r11]
+
+    CMP r11, #30
+    BLT PD_SKIP_G2
+    LDR r0, ptr_ghost2_active
+    MOV r1, #1
+    STRB r1, [r0]
+PD_SKIP_G2:
+	CMP r11, #60
+	BLT PD_SKIP_G3
+	LDR r0, ptr_ghost3_active
+	MOV r1, #1
+	STRB r1, [r0]
+PD_SKIP_G3:
+	CMP r11, #90
+	BLT PD_SKIP_G4
+	LDR r0, ptr_ghost4_active
+	MOV r1, #1
+	STRB r1, [r0]
+PD_SKIP_G4:
+
+	; reset eaten count
+	LDR r0, ptr_ghosts_eaten_count
+	MOV r1, #0
+	STRB r1, [r0]
+
+	; redraw for ghosts going back to normal
+	LDR r0, ptr_ghost_redraw_flag
+	MOV r1, #1
+	STRB r1, [r0]
+
 	; move all active ghosts
-	MOV r0, #0		; blinky, always active
+CONTINUE:
+
+	; move blinky, (normally) always active, check eaten flag
+	LDR r0, ptr_ghost1_eaten
+	LDRB r1, [r0]
+	CMP r1, #1
+	BEQ SKIP_GHOST1_MOVE
+	MOV r0, #0
 	MOV r1, #5
 	BL move_ghost
 
+SKIP_GHOST1_MOVE:
 	LDR r0, ptr_ghost2_active	; check if pinky is active
 	LDRB r1, [r0]
 	CMP r1, #1
 	BNE SKIP_GHOST2_MOVE
+	LDR r0, ptr_ghost2_eaten	; check if eaten
+	LDRB r1, [r0]
+	CMP r1, #1
+	BEQ SKIP_GHOST2_MOVE
 	MOV r0, #1		; pinky
 	MOV r1, #6
 	BL move_ghost
@@ -2030,6 +2216,10 @@ SKIP_GHOST2_MOVE:
 	LDRB r1, [r0]
 	CMP r1, #1
 	BNE SKIP_GHOST3_MOVE
+	LDR r0, ptr_ghost3_eaten	; check if eaten
+	LDRB r1, [r0]
+	CMP r1, #1
+	BEQ SKIP_GHOST3_MOVE
 	MOV r0, #2		; inky
 	MOV r1, #7
 	BL move_ghost
@@ -2039,6 +2229,10 @@ SKIP_GHOST3_MOVE:
 	LDRB r1, [r0]
 	CMP r1, #1
 	BNE SKIP_GHOST4_MOVE
+	LDR r0, ptr_ghost4_eaten	; check if eaten
+	LDRB r1, [r0]
+	CMP r1, #1
+	BEQ SKIP_GHOST4_MOVE
 	MOV r0, #3		; clyde
 	MOV r1, #8
 	BL move_ghost
@@ -2266,13 +2460,17 @@ PU_PELLET:
 	; led to blue
 	MOV r0,#51
 	BL illuminate_RGB_LED
-	;for ghosts to become W
-	LDR r0, ptr_fredraw_flag
+	; for ghosts to become W
+	LDR r0, ptr_ghost_redraw_flag
 	MOV r1, #1
 	STRB r1, [r0]
 
-MOVE_DONE:
+	; reset ghosts eaten count
+	LDR r0, ptr_ghosts_eaten_count
+	MOV r1, #0
+	STRB r1, [r0]
 
+MOVE_DONE:
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	BX lr       	; Return
@@ -2686,7 +2884,13 @@ MG_PICK_DONE:
 	BLT MG_SAVE_UNDER
 	CMP r8, #8
 	BGT MG_SAVE_UNDER
-	MOV r8, #3
+	; tile is another ghost, find what under that ghost
+	SUB r3, r8, #5			; ghost index from tile value
+	LSL r3, r3, #5			; * 32, 32 bytes per table entry
+	LDR r8, ptr_ghost_table
+	ADD r3, r3, r8			; ghosts base entry in table
+	LDR r3, [r3, #28]		; ptr under ghost under
+	LDRB r8, [r3]			; tile under ghost under
 MG_SAVE_UNDER:
 	LDR r3, [r2, #28]	; ptr under
 	STRB r8, [r3]
